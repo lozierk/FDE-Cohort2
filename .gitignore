@@ -1,0 +1,27 @@
+# --- secrets and local state (never commit) ---
+.env
+.env.*
+!.env.example
+**/notify.config
+**/alerts.log
+**/kurt_replies.log
+**/.sent/
+**/.tg_offset
+**/.tg_seen
+**/.tg*
+
+# --- dependencies and build output ---
+node_modules/
+dist/
+**/web/dist/
+*.tsbuildinfo
+
+# --- run artifacts (the starter writes these; per-build runs/ and reports/ are regenerated) ---
+**/runs/
+**/reports/
+
+# --- OS / editor ---
+.DS_Store
+*.log
+.vscode/
+.idea/

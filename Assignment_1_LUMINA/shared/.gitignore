@@ -1,0 +1,9 @@
+notify.config
+alerts.log
+kurt_replies.log
+rejected_replies.log
+.tg_offset
+.tg_offset.tmp
+.tg_seen
+.tg.lock/
+.sent/

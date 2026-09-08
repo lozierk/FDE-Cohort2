@@ -1,0 +1,12 @@
+# Copy to shared/notify.config (git-ignored; never commit). Read as data, one KEY=VALUE per line.
+# Default channels for alerts: comma list of desktop,telegram,imessage
+CHANNELS=desktop,telegram
+# Telegram (primary): token from @BotFather. After Kurt sends the bot one message, an agent runs
+#   curl -s "https://api.telegram.org/bot<TOKEN>/getUpdates"
+# and copies message.chat.id -> TELEGRAM_CHAT_ID and message.from.id -> TELEGRAM_KURT_USER_ID.
+# Only messages matching BOTH ids are accepted as Kurt's replies.
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
+TELEGRAM_KURT_USER_ID=
+# iMessage fallback (outbound only), used only if Kurt declines Telegram: phone (E.164) or Apple ID.
+KURT_IMESSAGE=

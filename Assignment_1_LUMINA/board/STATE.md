@@ -1,6 +1,8 @@
 # STATE — LUMINA (Assignment 1), Claude and Codex builds
 
-As of 2026-09-09 13:26:32 ET (Q-6 confirmed, presence rule, DESIGN draft v0.1). Editor: Claude (lease until explicit hand-off on the board). Every line cites its evidence IDs; legacy IDs live in `board/archive/`, new ones in `board/messages/`.
+As of Codex close (CODEX-074). Editor: unclaimed after explicit release (CLAUDE-062, CODEX-074); claim before editing. Evidence IDs resolve in archive or messages.
+
+Both sessions closed at Kurt's request. Latest Codex handoff: `Codex_Build/Resume_from_20260909_1333.md`; Claude: `Claude_Build/Resume_from_20260909_1331.md`. No active polling or automatic wake implied.
 
 ## Registry
 - Program `fde-cohort2` · Project `lumina-a1` · Repo `lozierk/FDE-Cohort2` (private), path `Assignment_1_LUMINA/`; builds `Claude_Build/` (Claude) and `Codex_Build/` (Codex). Upstream starter pinned at `1442b05`, tree hash `c75bc544640cce93`.

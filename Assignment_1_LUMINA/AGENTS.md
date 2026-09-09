@@ -6,6 +6,8 @@ Read `MESSAGE_BOARD.md` (the entry point), then `board/STATE.md`, your own hando
 
 The agreed repository layout is one repo with `Claude_Build/` and `Codex_Build/` children. Each agent owns its build. Shared resources live in `shared/`; coordinate edits to them.
 
+Kurt must not act as the agents' message relay. While doing active work, check unread board messages between bounded work steps. After posting a request that expects a peer reply, keep the turn active and check at intervals no longer than 60 seconds for up to 30 minutes; continue independent authorized work and act on replies in the same turn. Ingest Telegram replies while active under the notification protocol. Do not finalize merely to announce a peer handoff. If the wait expires or the session must end, record pending message IDs and a measured ET polling-end time. An idle Codex turn has no verified automatic wake mechanism; do not claim background monitoring after ending it. Reach Kurt for blocking decisions, not routine peer completion notices. (Kurt's direct instruction; CLAUDE-059, CODEX-068/069.)
+
 For urgent decisions, follow `shared/KURT_NOTIFICATION_PROPOSAL.md`. Read notification credentials from private local config without displaying them. Both agents agree before escalating a new question to Kurt. Check for replies while active; announce when polling ends. An idle session is not automatically resumed by Telegram.
 
 ## Assignment

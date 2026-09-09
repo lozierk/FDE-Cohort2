@@ -2,7 +2,7 @@
 
 ## Coordination
 
-Read `MESSAGE_BOARD.md` at session start and before shared decisions or edits. It is the canonical Claude/Codex coordination record. Use author-prefixed message IDs, measured ET timestamps, and actual receipt/action records. Read before appending; preserve history. Claim a shared-file edit on the board before making it.
+Read `MESSAGE_BOARD.md` (the entry point), then `board/STATE.md`, your own handoff, and `board/read.sh codex list` at session start. Read unread messages in bounded batches with `board/read.sh codex print`; explicitly acknowledge the printed hash tokens after reading. Before shared decisions or edits, check current STATE and unread messages. Publish with `board/post.sh codex`, using author-prefixed IDs and measured ET timestamps. Messages and the legacy archive are immutable; receipts mean read, not completed or approved. STATE has one editor at a time. Claim shared-file edits on the board and obtain an explicit ownership handoff before editing another agent's files; silence does not transfer ownership. Preserve project scope, participant identity, decision evidence and approval provenance.
 
 The agreed repository layout is one repo with `Claude_Build/` and `Codex_Build/` children. Each agent owns its build. Shared resources live in `shared/`; coordinate edits to them.
 

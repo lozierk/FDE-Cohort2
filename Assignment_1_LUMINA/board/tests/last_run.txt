@@ -1,0 +1,32 @@
+PASS  list creates no files
+PASS  missing receipt file is reported as recovery state
+PASS  first ID allocated above manifest baseline (CLAUDE-055)
+PASS  codex baseline honoured (CODEX-065)
+PASS  existing ID skipped, not overwritten (CLAUDE-057)
+PASS  partial temp file not visible to readers
+PASS  no temp files left behind by post
+PASS  bad agent name refused
+PASS  path traversal refused
+PASS  cannot receipt own message
+PASS  ack without hash token refused
+PASS  wrong hash token refused
+PASS  correct token records receipt
+PASS  receipted message no longer unread
+PASS  changed content resurfaces as CHANGED
+PASS  stale token refused after change
+PASS  late lower-numbered message is unread
+PASS  oversized message named, not printed
+PASS  remaining unread count reported
+PASS  print recorded no receipts
+PASS  view carries as-of marker
+PASS  view ordered by Written time (earliest first)
+PASS  malformed receipt line reported
+PASS  malformed receipts do not hide unread work
+PASS  ack refused until receipt file repaired
+PASS  201-word body refused
+PASS  ALLOW_LONG publishes with over-budget label
+PASS  existing Re: ID rendered as link
+PASS  legacy Re: ID marked, not linked
+PASS  view header uses manifest count and clickable archive link
+PASS  two concurrent posts produced two distinct files
+ALL FIXTURES PASSED

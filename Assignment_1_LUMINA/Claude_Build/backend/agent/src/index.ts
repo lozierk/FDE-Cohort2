@@ -37,16 +37,27 @@
  *     that escalates itself is a product with an unbounded bill.
  */
 import express from 'express';
-import pino from 'pino';
 import { mkdirSync } from 'node:fs';
 import { HealthResponse, ROUTES } from '@lumina/contract';
-import { env } from './env.js';
-import { pingDb } from './db.js';
+import { env, secrets } from './env.js';
+import { pingDb, vectorBackend } from './db.js';
+import { log } from './log.js';
+import { makeProviders } from './providers/index.js';
+import { ensureIndexes } from './store/index.js';
+import { askRoutes } from './routes/ask.js';
+import { memoryRoutes } from './routes/memory.js';
+import { statsRoutes } from './routes/stats.js';
+import { threadRoutes } from './routes/threads.js';
+import { requestId, sendError } from './routes/context.js';
 
-const log = pino({ level: env.logLevel });
+// Fail loud, at boot, naming the variable: a service that starts fine and only discovers a
+// missing key on a user's first question has turned a config error into an outage.
+const providers = makeProviders(env, secrets);
+
 const app = express();
 
 app.disable('x-powered-by');
+app.use(requestId);
 app.use((req, res, next) =>
   req.path.endsWith('/documents') && req.method === 'POST'
     ? next()
@@ -61,14 +72,23 @@ app.get('/health', async (_req, res) => {
   const dbStatus = await pingDb();
   const body: HealthResponse = {
     status: dbStatus === 'ok' ? 'ok' : 'degraded',
-    model: env.llmModel,
-    searchProvider: env.searchProvider,
-    vectorStore: env.vectorBackend,
+    // The model and provider actually serving answers, not the env defaults: with
+    // LLM_PROVIDER=fake, saying "claude-haiku-4-5" would make every local number a lie.
+    model: providers.llm.model,
+    searchProvider: providers.search.name,
+    vectorStore: vectorBackend(),
     db: dbStatus,
     ai: { status: 'ok' }
   };
   res.status(dbStatus === 'ok' ? 200 : 503).json(body);
 });
+
+// ---------------------------------------------------------------- what is built (Week 1)
+
+app.use(threadRoutes);
+app.use(askRoutes(providers));
+app.use(memoryRoutes);
+app.use(statsRoutes);
 
 // ---------------------------------------------------------------- everything else: 501
 
@@ -84,23 +104,34 @@ for (const route of ROUTES) {
 
 app.use((req, res) => res.status(404).json({ error: `no route ${req.method} ${req.path}`, status: 404 }));
 
-app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  log.error({ err }, 'agent error');
-  res.status(502).json({ error: err.message, status: 502 });
+app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  log.error({ err: err.message, requestId: req.requestId }, 'agent error');
+  if (res.headersSent) {
+    res.end();
+    return;
+  }
+  sendError(res, 502, err.message);
 });
+
+export { app };
 
 app.listen(env.port, () => {
   log.info(
     {
       port: env.port,
-      model: env.llmModel,
-      searchProvider: env.searchProvider,
-      vectorStore: env.vectorBackend,
+      llmProvider: providers.llm.name,
+      model: providers.llm.model,
+      searchProvider: providers.search.name,
+      embedder: providers.embedder.model,
+      vectorStore: vectorBackend(),
       caps: {
         quick: { toolCalls: env.maxToolCalls, wallClockSec: env.maxWallClockSec },
         deep: { toolCalls: env.maxToolCallsDeep, wallClockSec: env.maxWallClockSecDeep, dailyCap: env.deepDailyCap }
       }
     },
-    'agent up — every route but /health returns 501 until you build it'
+    'agent up — quick loop, threads, memory and stats are live; spaces and deep search are still 501'
   );
+  // Warm the connection and the indexes so the first question does not pay for them, and so a
+  // Mongo that is unreachable shows up in the log at boot rather than in a user's answer.
+  ensureIndexes().catch((err: Error) => log.error({ err: err.message }, 'index setup failed'));
 });

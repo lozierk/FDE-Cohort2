@@ -1,8 +1,8 @@
 # DESIGN.md — LUMINA (Claude build)
 
-> DRAFT v0.1 for Kurt's review, 2026-09-09. The five graded headings below are read by
-> `eval/build-report.mjs`. Items marked **[Kurt]** are places where his own words or his
-> decision should replace mine before this is final. Nothing here is built yet.
+> v1.0, 2026-09-11. Drafted 2026-09-09 as v0.1; the two open trade-offs (LLM provider, worker
+> placement) were decided by Kurt on 2026-09-11. The five graded headings below are read by
+> `eval/build-report.mjs`. Nothing here is built yet.
 
 ## Components
 
@@ -10,14 +10,14 @@ Seven pieces, four of them ours. **Web UI** (provided, untouched) runs on Vercel
 ever talks to the gateway. **Gateway** is an Express service on a public Fly.io Machine: it
 validates requests against the zod contract, rate-limits per `X-User-Id`, and streams SSE
 through to the browser. **Agent service** is an Express service on a private Fly.io Machine
-with no public address: it owns the agent loop, the tools (`search_web`, `fetch_page`,
+with no public address: it owns the agent loop, the tools (`web_search`, `fetch_page`,
 `search_documents`, `save_memory`, `recall_memory`, `plan_research`), the provider keys, and
 the spend gates. **Jobs worker** is a child process of the agent Machine that polls the `jobs`
 collection and does the CPU-heavy work: PDF parsing, chunking, embedding, indexing, and the
 read-your-write probe. **MongoDB Atlas** (one free M0 cluster, database `lumina_claude`) holds
 threads, messages, memories, spaces, documents, chunks with their vectors, the `searchCache`,
-`jobs`, `requests`, and GridFS originals. **Providers**: OpenRouter for the LLM (shared trial
-model `z-ai/glm-4.6` pinned to one endpoint), OpenAI for embeddings, Tavily for web search.
+`jobs`, `requests`, and GridFS originals. **Providers**: Anthropic direct for the LLM (Claude
+Haiku 4.5, `claude-haiku-4-5`), OpenAI for embeddings, Tavily for web search.
 **Run logs** are files, `runs/<requestId>.json`, written by the agent service per answer; they
 carry state the grader reads and are the only component that is neither a service nor a
 collection.
@@ -46,8 +46,8 @@ broker. When a provider throws before headers are sent, the answer is a `502`; a
 the stream ends with an `error` event and `terminated: "error"`, never a plausible answer.
 When the agent is down the gateway returns `502` and `/health` says so rather than inventing
 provider names. When the worker is down, uploads still return `202` and documents stay
-visibly `pending`; nothing is lost because the job row is the record. **[Kurt]** whether the
-worker should run as a separate Fly app instead: see Trade-offs.
+visibly `pending`; nothing is lost because the job row is the record. The worker stays inside
+the agent app rather than a separate Fly app: see Trade-offs.
 
 ## State
 
@@ -65,23 +65,33 @@ with backoff and the document fails loudly if it never becomes visible.
 
 ## Trade-offs
 
-1. **OpenRouter with GLM-4.6 instead of Anthropic direct.** Chosen so both builds in this
-   comparison run the same model on the same endpoint and the comparison measures the
-   implementation, and because the graded cost gates (five cents per quick answer) rule out
-   frontier pricing. Given up: first-party prompt caching, a model I know well, and I take on
-   endpoint-pinning risk and a license-neutral but unauthenticated route. **[Kurt]** this is
-   the decision most worth stating in your words.
+1. **Anthropic direct with Claude Haiku 4.5 instead of OpenRouter with GLM-4.6.** We are
+   doing this for simplicity and speed. One vendor, one key, one SDK, and a model whose
+   behavior on tool use and citations we already know, so the first working loop arrives
+   sooner and debugging stays inside one system. Haiku 4.5 clears the graded cost gate of five
+   cents per quick answer with room to spare, and first-party prompt caching keeps the system
+   prompt and tool definitions cheap across a multi-step loop. Given up: the shared-model
+   comparison with the Codex build, and the lower per-token price of an open-weight model on a
+   pinned OpenRouter endpoint. That earlier plan (OpenRouter, `z-ai/glm-4.6` at one pinned
+   provider, reasoning off) is recorded on the board as D-10 and stays a candidate for a later
+   refactor once the build is stable; the provider call sits behind one module so the swap is
+   contained.
 2. **Atlas Vector Search instead of a dedicated vector store.** One document per citation and
    no second system to keep consistent, at the cost of the M0 three-index limit, which is why
    each build needs its own cluster.
 3. **Worker as a child process on the agent Machine instead of a separate app.** Fewer moving
    parts and one deploy, at the cost of CPU contention during a large PDF and the risk that
-   Fly stops a private Machine with jobs still pending. I am unsure about this one; if the
-   bench shows quick-search latency spikes during indexing, it becomes a separate app.
-4. **Measured cost instead of a rate table.** `costUsd` comes from the usage block OpenRouter
-   returns on every response, summed across the loop, so the graded number is what was
-   billed. Given up: the simplicity of the starter's `sla.json` price table, which stays as the
-   documented fallback when a response carries no usage.
+   Fly stops a private Machine with jobs still pending. Chosen for simplicity; the bench is
+   the tripwire. If it shows quick-search latency spikes during indexing, the worker becomes a
+   separate app, and nothing in the job protocol has to change because the `jobs` collection
+   is already the only interface between them.
+4. **Measured tokens times published rates instead of a flat rate table.** `costUsd` is
+   computed per call from the usage block Anthropic returns on every response (input, output,
+   cache-write and cache-read tokens, each at its own rate for Haiku 4.5) and summed across
+   the loop, so the graded number tracks what was billed, cache discounts included. Given up:
+   the simplicity of the starter's `sla.json` price table, which stays as the documented
+   fallback when a response carries no usage. The rates live in one config file with the model
+   id, so a later model swap changes one place.
 5. **Quick as the default with no server-side upgrade** is a requirement, not a trade-off,
    but it costs something real: a user who asks a deep question in quick mode gets a shallow
    answer, and the UI toggle is the only remedy.

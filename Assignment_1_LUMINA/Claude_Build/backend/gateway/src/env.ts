@@ -18,6 +18,9 @@ export const env = {
     .map((s) => s.trim())
     .filter(Boolean),
   rateLimitPerMinute: num(process.env.RATE_LIMIT_PER_MINUTE, 30),
+  /** Mirrors the agent's own default (backend/agent/src/env.ts) so the gateway's stream
+   *  timeout tracks the agent's deep-search wall-clock cap without reading its module. */
+  maxWallClockSecDeep: num(process.env.MAX_WALL_CLOCK_SEC_DEEP, 240),
   logLevel: process.env.LOG_LEVEL ?? 'info',
   /** Serve the built UI from the gateway in production so one host serves / and /evals. */
   webDist: resolve(process.cwd(), '../../web/dist')

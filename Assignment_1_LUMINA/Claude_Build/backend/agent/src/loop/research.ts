@@ -1,8 +1,8 @@
 import { TraceEvent, type AskMode, type ToolName } from '@lumina/contract';
 import type { Logger } from 'pino';
 import { scrub } from '../log.js';
-import { MAX_TOKENS, type TokenUsage } from '../config/model.js';
-import type { ContentBlock, LlmMessage, ToolDefinition, ToolResultBlock, ToolUseBlock } from '../providers/llm.js';
+import { llmCostUsd, MAX_TOKENS, type TokenUsage } from '../config/model.js';
+import type { ContentBlock, LlmMessage, LlmProvider, ToolDefinition, ToolResultBlock, ToolUseBlock } from '../providers/llm.js';
 import type { Providers } from '../providers/index.js';
 import { TOOLS_BY_NAME } from '../tools/index.js';
 import type { Tool, ToolContext } from '../tools/types.js';
@@ -359,6 +359,12 @@ export interface LlmCallDeps {
 /**
  * One provider call, with its usage folded into the request's running total. A throw becomes
  * a `ProviderFailure`, which is the only thing that ends a run with `terminated: "error"`.
+ *
+ * `llm` defaults to `deps.providers.llm` — every existing caller that never mentions it keeps
+ * calling the one model it always called. `spend` is optional and per-call, not per-run: two
+ * models at different rates can share one run (research on Haiku, synthesis on Sonnet), so
+ * the dollar total has to be built call by call, each priced at ITS OWN provider's model, not
+ * once at the end against whichever model happened to be `providers.llm`.
  */
 export async function callLlm(
   deps: LlmCallDeps,
@@ -369,12 +375,15 @@ export async function callLlm(
     toolChoice?: { name: string };
     maxTokens: number;
     usage: TokenUsage;
+    llm?: LlmProvider;
+    spend?: { usd: number };
   },
   onText?: (text: string) => void
 ): Promise<LlmTurn> {
+  const provider = req.llm ?? deps.providers.llm;
   const out: LlmTurn = { text: '', toolUses: [], stop: 'end_turn' };
   try {
-    const stream = deps.providers.llm.complete({
+    const stream = provider.complete({
       system: req.system,
       messages: req.messages,
       ...(req.tools?.length ? { tools: req.tools } : {}),
@@ -399,6 +408,12 @@ export async function callLlm(
         req.usage.output += ev.output;
         req.usage.cacheRead += ev.cacheRead;
         req.usage.cacheWrite += ev.cacheWrite;
+        if (req.spend) {
+          req.spend.usd += llmCostUsd(
+            { input: ev.input, output: ev.output, cacheRead: ev.cacheRead, cacheWrite: ev.cacheWrite },
+            provider.model
+          );
+        }
       } else {
         out.stop = ev.reason;
       }

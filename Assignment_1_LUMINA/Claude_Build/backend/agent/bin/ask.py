@@ -1,22 +1,26 @@
 #!/usr/bin/env python3
 # Ask one question through the local gateway and print tools, TTFT, cost, citations.
-# Usage: python3 bin/ask.py [--depth quick|deep] [--mode web|docs|auto] [--user ID] "question" out.json
+# Usage: python3 bin/ask.py [--depth quick|deep] [--mode web|docs|auto] [--user ID] [--space ID] "question" out.json
 #   (gateway on :8787; defaults X-User-Id kurt-test, mode web, depth quick)
+# --space ID puts "spaceId": ID in the ask body — docs-mode questions against a Space.
 # On --depth deep it also prints plan latency, the sub-questions, per-sub-question source
 # counts and distinct sources — the numbers the deep spec's acceptance step asks for.
 import sys,time,json,re,subprocess,urllib.request
 args=sys.argv[1:]
-depth="quick"; mode="web"; user="kurt-test"; rest=[]
+depth="quick"; mode="web"; user="kurt-test"; space=None; rest=[]
 while args:
     a=args.pop(0)
     if a=="--depth": depth=args.pop(0)
     elif a=="--mode": mode=args.pop(0)
     elif a=="--user": user=args.pop(0)
+    elif a=="--space": space=args.pop(0)
     else: rest.append(a)
 q=rest[0]; out=rest[1] if len(rest)>1 else "/dev/null"
 req=urllib.request.Request("http://localhost:8787/threads",data=json.dumps({"title":q[:40]}).encode(),headers={"content-type":"application/json","X-User-Id":user})
 tid=json.load(urllib.request.urlopen(req))["threadId"]
-start=time.time(); p=subprocess.Popen(["curl","-sN","-X","POST",f"http://localhost:8787/threads/{tid}/ask","-H","content-type: application/json","-H",f"X-User-Id: {user}","-d",json.dumps({"query":q,"mode":mode,"depth":depth})],stdout=subprocess.PIPE,text=True)
+body={"query":q,"mode":mode,"depth":depth}
+if space: body["spaceId"]=space
+start=time.time(); p=subprocess.Popen(["curl","-sN","-X","POST",f"http://localhost:8787/threads/{tid}/ask","-H","content-type: application/json","-H",f"X-User-Id: {user}","-d",json.dumps(body)],stdout=subprocess.PIPE,text=True)
 ev=None; toks=[]; traces=[]; srcs=[]; done=None; ttft=None; plan=None; plan_ms=None; saw_retrieval=False; plan_before=None
 RETRIEVAL={"web_search","fetch_page","search_documents"}
 for line in p.stdout:

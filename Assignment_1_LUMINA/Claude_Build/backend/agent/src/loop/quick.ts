@@ -12,14 +12,7 @@ import {
 import type { Logger } from 'pino';
 import { env } from '../env.js';
 import { scrub } from '../log.js';
-import {
-  MAX_TOKENS,
-  embeddingCostUsd,
-  emptyUsage,
-  llmCostUsd,
-  SEARCH_USD_PER_CALL,
-  type TokenUsage
-} from '../config/model.js';
+import { MAX_TOKENS, embeddingCostUsd, emptyUsage, SEARCH_USD_PER_CALL, type TokenUsage } from '../config/model.js';
 import type { Providers } from '../providers/index.js';
 import { toolsForMode } from '../tools/index.js';
 import type { ToolContext } from '../tools/types.js';
@@ -74,6 +67,8 @@ export async function runQuickLoop(input: QuickLoopInput): Promise<QuickLoopResu
   const sources = new SourceRegistry();
   const toolCalls: RunToolCall[] = [];
   const usage = emptyUsage();
+  /** LLM dollars, priced per call against the model that made it — see callLlm in research.ts. */
+  const spend = { usd: 0 };
   let terminated: Terminated = 'done';
   let ttftMs = 0;
   let step = 0;
@@ -160,7 +155,7 @@ export async function runQuickLoop(input: QuickLoopInput): Promise<QuickLoopResu
         ...(input.space ? { space: input.space } : {})
       }),
       emit: (event, data) => input.emit(event, data),
-      callLlm: (req) => callLlm(deps, { ...req, usage }),
+      callLlm: (req) => callLlm(deps, { ...req, usage, spend }),
       log: input.log,
       requestId: input.requestId,
       now
@@ -170,6 +165,10 @@ export async function runQuickLoop(input: QuickLoopInput): Promise<QuickLoopResu
     // ---------------------------------------------------------------- phase 2: synthesis
     const finalSources = sources.toSources(input.query);
     input.emit('sources', SourcesEvent.parse(finalSources));
+
+    // The synthesis model may differ from the research model (LLM_MODEL_SYNTHESIS): the
+    // answer is the one call worth a pricier model, so it is the one call that opts in.
+    const synthesisLlm = input.providers.synthesisLlm ?? input.providers.llm;
 
     // The synthesis call is NOT gated on the wall clock: when a cap has been hit the contract
     // still wants an honest partial answer, and the answer is the only thing that says so.
@@ -189,7 +188,9 @@ export async function runQuickLoop(input: QuickLoopInput): Promise<QuickLoopResu
           }
         ],
         maxTokens: MAX_TOKENS.synthesis,
-        usage
+        usage,
+        spend,
+        llm: synthesisLlm
       },
       (text) => {
         if (ttftMs === 0) ttftMs = now() - startedAt;
@@ -207,11 +208,12 @@ export async function runQuickLoop(input: QuickLoopInput): Promise<QuickLoopResu
       toolCalls,
       terminated,
       usage,
-      costUsd: totalCost(usage, uncachedSearches, embeddingTokens),
+      costUsd: totalCost(spend.usd, uncachedSearches, embeddingTokens),
       searchCached: searchCount > 0 && searchHits === searchCount,
       ttftMs,
       latencyMs: now() - startedAt,
-      model: input.providers.llm.model
+      // The model that wrote the answer, not the one that researched it.
+      model: synthesisLlm.model
     };
   } catch (err) {
     // Only a provider exception lands here. It ends the run — no plausible answer, no empty
@@ -224,27 +226,27 @@ export async function runQuickLoop(input: QuickLoopInput): Promise<QuickLoopResu
       terminated: 'error',
       error: scrub(`${(err as Error).message}`),
       usage,
-      costUsd: totalCost(usage, uncachedSearches, embeddingTokens),
+      costUsd: totalCost(spend.usd, uncachedSearches, embeddingTokens),
       searchCached: searchCount > 0 && searchHits === searchCount,
       ttftMs,
       latencyMs: now() - startedAt,
-      model: input.providers.llm.model
+      model: (input.providers.synthesisLlm ?? input.providers.llm).model
     };
   }
 }
 
 /**
- * Every dollar this request spent: measured LLM usage at the published rates, one flat rate
- * per uncached provider search, and the embedding tokens THIS request asked for.
+ * Every dollar this request spent: LLM dollars already priced call-by-call (`spend.usd` from
+ * `callLlm` — a run can mix a research model and a synthesis model, so the price has to be
+ * summed per call, not computed once here against one model), one flat rate per uncached
+ * provider search, and the embedding tokens THIS request asked for.
  *
  * The embedding term used to read `providers.embedder.tokensUsed`, which is cumulative for the
  * life of the process — so the hundredth answer in a session was billed for the ninety-nine
  * before it, and `costUsd` drifted upward all day. The counter now comes from the loop.
  */
-export function totalCost(usage: TokenUsage, uncachedSearches: number, embeddingTokens: number): number {
-  return (
-    llmCostUsd(usage) + uncachedSearches * SEARCH_USD_PER_CALL + embeddingCostUsd(embeddingTokens)
-  );
+export function totalCost(llmUsd: number, uncachedSearches: number, embeddingTokens: number): number {
+  return llmUsd + uncachedSearches * SEARCH_USD_PER_CALL + embeddingCostUsd(embeddingTokens);
 }
 
 /**

@@ -11,6 +11,7 @@ import {
   unresolvedCitations
 } from '@lumina/contract';
 import { searchLru } from '../src/cache/search-cache.js';
+import { llmCostUsd } from '../src/config/model.js';
 import { doneEventFor, runQuickLoop, type QuickLoopInput } from '../src/loop/quick.js';
 import { FakeEmbedder } from '../src/providers/fake-embeddings.js';
 import { FakeLlm, type FakeTurn } from '../src/providers/fake-llm.js';
@@ -273,4 +274,75 @@ test('empty retrieval produces an answer with no sources and no citations', asyn
   assert.deepEqual(sources, []);
   assert.deepEqual(unresolvedCitations(result.answer, sources), []);
   assert.equal(result.searchCached, false, 'no search at all is not a cache hit');
+});
+
+// ---------------------------------------------------------------- LLM_MODEL_SYNTHESIS
+
+/**
+ * A separate synthesis model (LLM_MODEL_SYNTHESIS) means one run can spend at two rates: the
+ * research calls at the research model's rate, the answer at the synthesis model's. These pin
+ * that `result.model` names the model that wrote the answer, and that `costUsd` is the sum of
+ * each call priced at ITS OWN model — never the whole run priced at whichever model happened
+ * to be `providers.llm`.
+ */
+
+test('a distinct synthesisLlm: result.model is the synthesis model, and costUsd sums each call at its own rate', async () => {
+  searchLru.clear();
+  // mode=auto, empty history, no Space: no preflight runs, so the research phase is exactly
+  // one model call (a text turn with no tool ends the loop immediately) before synthesis.
+  const research = new FakeLlm([{ text: 'ready' }], 'fake:claude-haiku-4-5');
+  const synthesis = new FakeLlm([{ text: 'Tavily is a search API with no citations needed here.' }], 'fake:claude-sonnet-5');
+  const frames: Frame[] = [];
+  const input: QuickLoopInput = {
+    query: 'What is Tavily?',
+    mode: 'auto',
+    userId: 'test-user',
+    threadId: 'thr_test',
+    requestId: 'req_test',
+    history: [],
+    providers: { llm: research, search: new FakeSearch(), embedder: new FakeEmbedder(), synthesisLlm: synthesis },
+    caps: { maxToolCalls: 8, maxWallClockSec: 90 },
+    searchCacheTtlSeconds: 60,
+    emit: (event, data) => frames.push({ event, data }),
+    log
+  };
+
+  const result = await runQuickLoop(input);
+
+  assert.equal(research.calls.length, 1, 'one research turn — a text reply with no tool ends the loop');
+  assert.equal(synthesis.calls.length, 1, 'one synthesis turn');
+  assert.equal(result.model, 'fake:claude-sonnet-5', 'the model named is the one that wrote the answer');
+
+  // FakeLlm yields usage input:100/output:50 per call regardless of script — exact arithmetic.
+  const perCall = { input: 100, output: 50, cacheRead: 0, cacheWrite: 0 };
+  const expected = llmCostUsd(perCall, 'claude-haiku-4-5') + llmCostUsd(perCall, 'claude-sonnet-5');
+  assert.ok(Math.abs(result.costUsd - expected) < 1e-9, `costUsd ${result.costUsd} vs expected ${expected}`);
+});
+
+test('with no synthesisLlm, costUsd is unchanged from the single-model arithmetic (regression)', async () => {
+  searchLru.clear();
+  const llm = new FakeLlm([{ text: 'ready' }, { text: 'Answer with no citations needed here.' }], 'fake:claude-haiku-4-5');
+  const frames: Frame[] = [];
+  const input: QuickLoopInput = {
+    query: 'What is Tavily?',
+    mode: 'auto',
+    userId: 'test-user',
+    threadId: 'thr_test',
+    requestId: 'req_test',
+    history: [],
+    providers: { llm, search: new FakeSearch(), embedder: new FakeEmbedder() },
+    caps: { maxToolCalls: 8, maxWallClockSec: 90 },
+    searchCacheTtlSeconds: 60,
+    emit: (event, data) => frames.push({ event, data }),
+    log
+  };
+
+  const result = await runQuickLoop(input);
+
+  assert.equal(llm.calls.length, 2, 'one research turn, one synthesis turn, both on the same model');
+  assert.equal(result.model, 'fake:claude-haiku-4-5');
+
+  const perCall = { input: 100, output: 50, cacheRead: 0, cacheWrite: 0 };
+  const expected = llmCostUsd(perCall, 'claude-haiku-4-5') * 2;
+  assert.ok(Math.abs(result.costUsd - expected) < 1e-9, `costUsd ${result.costUsd} vs expected ${expected}`);
 });

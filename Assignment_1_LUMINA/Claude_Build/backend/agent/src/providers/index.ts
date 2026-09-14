@@ -1,3 +1,4 @@
+import { hasRates } from '../config/model.js';
 import { AnthropicLlm } from './anthropic.js';
 import type { Embedder } from './embeddings.js';
 import { FakeEmbedder } from './fake-embeddings.js';
@@ -12,11 +13,18 @@ export interface Providers {
   llm: LlmProvider;
   search: SearchProvider;
   embedder: Embedder;
+  /**
+   * Set only when LLM_MODEL_SYNTHESIS names a different model than LLM_MODEL. Optional so
+   * every test harness built as `{ llm, search, embedder }` keeps compiling and behaving —
+   * the single-model run is the default, not a special case of the two-model one.
+   */
+  synthesisLlm?: LlmProvider;
 }
 
 type EnvShape = {
   llmProvider: string;
   llmModel: string;
+  llmModelSynthesis: string;
   searchProvider: string;
   embeddingProvider: string;
   embeddingModel: string;
@@ -32,7 +40,8 @@ export function makeProviders(env: EnvShape, secrets: SecretShape): Providers {
   return {
     llm: makeLlm(env, secrets),
     search: makeSearch(env, secrets),
-    embedder: makeEmbedder(env, secrets)
+    embedder: makeEmbedder(env, secrets),
+    ...(env.llmModelSynthesis !== env.llmModel ? { synthesisLlm: makeSynthesisLlm(env, secrets) } : {})
   };
 }
 
@@ -50,7 +59,28 @@ function makeLlm(env: EnvShape, secrets: SecretShape): LlmProvider {
       // "claude-haiku-4-5" makes every number on the page a quiet lie.
       return new FakeLlm(undefined, `fake:${env.llmModel}`);
     case 'anthropic':
+      // An unpriced model would make every costUsd a lie — needKey already refuses to boot
+      // on a missing key for the same reason; this is the same failure mode for the rate table.
+      if (!hasRates(env.llmModel)) {
+        throw new Error(`LLM_MODEL "${env.llmModel}" has no published rate in src/config/model.ts — add one or use a priced model`);
+      }
       return new AnthropicLlm(needKey(secrets.anthropic, 'ANTHROPIC_API_KEY', 'anthropic'), env.llmModel);
+    default:
+      throw new Error(`unknown LLM_PROVIDER "${env.llmProvider}" — expected anthropic or fake`);
+  }
+}
+
+function makeSynthesisLlm(env: EnvShape, secrets: SecretShape): LlmProvider {
+  switch (env.llmProvider) {
+    case 'fake':
+      return new FakeLlm(undefined, `fake:${env.llmModelSynthesis}`);
+    case 'anthropic':
+      if (!hasRates(env.llmModelSynthesis)) {
+        throw new Error(
+          `LLM_MODEL_SYNTHESIS "${env.llmModelSynthesis}" has no published rate in src/config/model.ts — add one or use a priced model`
+        );
+      }
+      return new AnthropicLlm(needKey(secrets.anthropic, 'ANTHROPIC_API_KEY', 'anthropic'), env.llmModelSynthesis);
     default:
       throw new Error(`unknown LLM_PROVIDER "${env.llmProvider}" — expected anthropic or fake`);
   }

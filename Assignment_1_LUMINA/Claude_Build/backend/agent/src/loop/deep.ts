@@ -74,6 +74,8 @@ export async function runDeepLoop(
   const sources = new SourceRegistry();
   const toolCalls: RunToolCall[] = [];
   const usage = emptyUsage();
+  /** LLM dollars, priced per call against the model that made it — see callLlm in research.ts. */
+  const spend = { usd: 0 };
   let terminated: Terminated = "done";
   let ttftMs = 0;
   let step = 0;
@@ -151,6 +153,10 @@ export async function runDeepLoop(
     log: input.log,
   };
 
+  // The model that writes the answer, not the one that researched it — same reasoning as
+  // quick.ts. Computed once: neither provider changes mid-request.
+  const synthesisLlm = input.providers.synthesisLlm ?? input.providers.llm;
+
   const result = (over: Partial<DeepLoopResult>): DeepLoopResult => ({
     answerId: newId("ans"),
     answer: "",
@@ -159,11 +165,11 @@ export async function runDeepLoop(
     terminated,
     subQuestions: plan,
     usage,
-    costUsd: totalCost(usage, uncachedSearches, embeddingTokens),
+    costUsd: totalCost(spend.usd, uncachedSearches, embeddingTokens),
     searchCached: searchCount > 0 && searchHits === searchCount,
     ttftMs,
     latencyMs: now() - startedAt,
-    model: input.providers.llm.model,
+    model: synthesisLlm.model,
     ...over,
   });
 
@@ -174,7 +180,7 @@ export async function runDeepLoop(
       history,
       min: input.deep.subQuestionsMin,
       max: input.deep.subQuestionsMax,
-      callLlm: (req) => callLlm(deps, { ...req, usage }),
+      callLlm: (req) => callLlm(deps, { ...req, usage, spend }),
       log: input.log,
       requestId: input.requestId,
       now,
@@ -299,7 +305,7 @@ export async function runDeepLoop(
             docsExtraSearches: env.docsExtraSearches,
             system: researchSystem,
             emit,
-            callLlm: (req) => callLlm(deps, { ...req, usage }),
+            callLlm: (req) => callLlm(deps, { ...req, usage, spend }),
             log: input.log,
             requestId: input.requestId,
             now,
@@ -353,6 +359,8 @@ export async function runDeepLoop(
         ],
         maxTokens: MAX_TOKENS.deepSynthesis,
         usage,
+        spend,
+        llm: synthesisLlm,
       },
       (text) => {
         if (ttftMs === 0) ttftMs = now() - startedAt;

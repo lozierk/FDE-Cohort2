@@ -65,3 +65,37 @@ test('/health needs no X-User-Id', async () => {
   const res = await fetch(`${base}/health`, { headers: {} });
   assert.equal(res.status, 200);
 });
+
+// ---------------------------------------------------------------- LLM_MODEL_SYNTHESIS
+
+test('/health names both models when synthesisLlm differs, and still parses against the contract', async () => {
+  ping = 'ok';
+  (providers as unknown as { synthesisLlm?: unknown }).synthesisLlm = new FakeLlm(undefined, 'claude-test-synthesis');
+  try {
+    const res = await fetch(`${base}/health`);
+    assert.equal(res.status, 200);
+    const body = HealthResponse.parse(await res.json());
+    assert.equal(body.model, 'claude-test-model; synthesis: claude-test-synthesis');
+  } finally {
+    delete (providers as unknown as { synthesisLlm?: unknown }).synthesisLlm;
+  }
+});
+
+test('/health names the plain model when synthesisLlm is the same model', async () => {
+  ping = 'ok';
+  (providers as unknown as { synthesisLlm?: unknown }).synthesisLlm = new FakeLlm(undefined, 'claude-test-model');
+  try {
+    const res = await fetch(`${base}/health`);
+    const body = HealthResponse.parse(await res.json());
+    assert.equal(body.model, 'claude-test-model');
+  } finally {
+    delete (providers as unknown as { synthesisLlm?: unknown }).synthesisLlm;
+  }
+});
+
+test('/health names the plain model when there is no synthesisLlm', async () => {
+  ping = 'ok';
+  const res = await fetch(`${base}/health`);
+  const body = HealthResponse.parse(await res.json());
+  assert.equal(body.model, 'claude-test-model');
+});

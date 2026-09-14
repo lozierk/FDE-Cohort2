@@ -18,9 +18,15 @@ export function healthRoutes(
   const router = Router();
   router.get('/health', async (_req, res) => {
     const dbStatus = await deps.pingDb();
+    // HealthResponse.parse strips unknown keys, so a second `synthesisModel` field would
+    // silently vanish on the wire — one string names both models instead.
+    const model =
+      providers.synthesisLlm && providers.synthesisLlm.model !== providers.llm.model
+        ? `${providers.llm.model}; synthesis: ${providers.synthesisLlm.model}`
+        : providers.llm.model;
     const body: HealthResponse = {
       status: dbStatus === 'ok' ? 'ok' : 'degraded',
-      model: providers.llm.model,
+      model,
       searchProvider: providers.search.name,
       vectorStore: deps.vectorBackend(),
       db: dbStatus,

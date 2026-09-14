@@ -1,4 +1,4 @@
-import type { Source } from '@lumina/contract';
+import type { Locator, Source } from '@lumina/contract';
 
 /**
  * The source registry, one per request. Two rules do all the work here:
@@ -9,6 +9,11 @@ import type { Source } from '@lumina/contract';
  *  2. The LOOP picks the snippet, never the model. A model-written snippet is a claim about
  *     what a page says; a verbatim passage is evidence, and evidence is what the grounding
  *     check measures (bench: 12 consecutive normalized tokens must be found in the text).
+ *
+ * Document chunks join the same registry and the same numbering. There is deliberately no
+ * second path to a citation number: `search_documents` registers a hit here or the model
+ * cannot cite it, which is what makes "never cite something this request did not retrieve"
+ * a property of the code rather than a line in a prompt.
  */
 
 export interface Candidate {
@@ -17,14 +22,30 @@ export interface Candidate {
   title: string;
   url?: string;
   docId?: string;
+  /** Where in the document this chunk is. Doc candidates only, and they all have one. */
+  locator?: Locator;
+  /**
+   * The retrieved chunks of this page/section, by ordinal. Doc candidates only. `text` is
+   * their merge (see `mergePieces`), rebuilt whenever a new piece of the same locator arrives.
+   */
+  pieces?: { ord: number; text: string }[];
   /** The search result's own snippet. Only ever used if it is verbatim in `text`. */
   searchSnippet?: string;
-  /** Fetched page text. A candidate with none of this is not citable. */
+  /** Fetched page text, or a chunk's own text. A candidate with none of this is not citable. */
   text?: string;
 }
 
 export const SNIPPET_MIN = 40;
 export const SNIPPET_MAX = 300;
+
+/** `p3` / `h:Bounded, or not a loop` / `l42`. Part of a doc candidate's dedupe key. */
+export function locatorKey(locator?: Locator): string {
+  if (!locator) return '';
+  if (locator.page !== undefined) return `p${locator.page}`;
+  if (locator.heading !== undefined) return `h:${locator.heading}`;
+  if (locator.line !== undefined) return `l${locator.line}`;
+  return '';
+}
 
 export class SourceRegistry {
   private readonly byKey = new Map<string, Candidate>();
@@ -36,13 +57,32 @@ export class SourceRegistry {
     title: string;
     url?: string;
     docId?: string;
+    locator?: Locator;
+    ord?: number;
     searchSnippet?: string;
     text?: string;
   }): number {
-    const key = input.url ?? input.docId ?? input.title;
+    // A web page is identified by its url. A document source is identified by document and
+    // PLACE in that document (page, heading, or line): every chunk retrieved from page 1 of
+    // one PDF folds into one source, with the chunks' texts merged in reading order. One
+    // citation per page is what the reader expects ("board-deck.pdf, p. 14"), and it keeps
+    // locators unique across the sources list, which the grounding check keys on.
+    const key =
+      input.kind === 'doc'
+        ? `${input.docId ?? input.title}#${locatorKey(input.locator)}`
+        : (input.url ?? input.docId ?? input.title);
     const existing = this.byKey.get(key);
     if (existing) {
-      if (input.text && input.text.length > (existing.text?.length ?? 0)) existing.text = input.text;
+      if (input.kind === 'doc' && input.text) {
+        const ord = input.ord ?? existing.pieces?.length ?? 0;
+        existing.pieces ??= [];
+        if (!existing.pieces.some((p) => p.ord === ord)) {
+          existing.pieces.push({ ord, text: input.text });
+          existing.text = mergePieces(existing.pieces);
+        }
+      } else if (input.text && input.text.length > (existing.text?.length ?? 0)) {
+        existing.text = input.text;
+      }
       if (!existing.searchSnippet && input.searchSnippet) existing.searchSnippet = input.searchSnippet;
       return existing.n;
     }
@@ -52,6 +92,8 @@ export class SourceRegistry {
       title: input.title.trim() || key,
       ...(input.url ? { url: input.url } : {}),
       ...(input.docId ? { docId: input.docId } : {}),
+      ...(input.locator ? { locator: input.locator } : {}),
+      ...(input.kind === 'doc' && input.text ? { pieces: [{ ord: input.ord ?? 0, text: input.text }] } : {}),
       ...(input.searchSnippet ? { searchSnippet: input.searchSnippet } : {}),
       ...(input.text ? { text: input.text } : {})
     };
@@ -89,7 +131,10 @@ export class SourceRegistry {
         title: c.title,
         snippet,
         ...(c.url ? { url: c.url } : {}),
-        ...(c.docId ? { docId: c.docId } : {})
+        ...(c.docId ? { docId: c.docId } : {}),
+        // The locator is the whole value of a document citation. Without it a reader is told
+        // "it is somewhere in this 40-page PDF", which is not a citation.
+        ...(c.locator ? { locator: c.locator } : {})
       });
     }
     return out;
@@ -111,10 +156,21 @@ export class SourceRegistry {
     for (const c of this.order) {
       const snippet = chooseSnippet(c, query);
       if (!snippet || !c.text) continue;
-      const text = windowAround(c.text, snippet, maxChars);
+      // A doc passage is the whole chunk, and its title carries the locator: the chunk is
+      // already the right size, and windowing it would mean the model reads one thing while
+      // the reader is shown another.
+      const text = c.kind === 'doc' ? c.text : windowAround(c.text, snippet, maxChars);
       let score = 0;
       for (const t of new Set(terms(text))) if (want.has(t)) score += 1;
-      scored.push({ p: { n: c.n, title: c.title, ...(c.url ? { url: c.url } : {}), text }, score });
+      scored.push({
+        p: {
+          n: c.n,
+          title: c.kind === 'doc' ? passageTitle(c) : c.title,
+          ...(c.url ? { url: c.url } : {}),
+          text
+        },
+        score
+      });
     }
     scored.sort((a, b) => b.score - a.score || a.p.n - b.p.n);
     return scored
@@ -158,7 +214,56 @@ export function windowAround(text: string, snippet: string, max: number): string
   return clean.slice(start, end).trim();
 }
 
+/** Longest suffix of `a` that is also a prefix of `b`, up to `max` chars. Consecutive chunks overlap. */
+function overlapLength(a: string, b: string, max: number): number {
+  const limit = Math.min(max, a.length, b.length);
+  for (let len = limit; len >= 12; len--) {
+    if (a.endsWith(b.slice(0, len))) return len;
+  }
+  return 0;
+}
+
+/**
+ * Merge the retrieved chunks of one page/section into one verbatim text, in ordinal order.
+ * Consecutive chunks (ord n, n+1) share CHUNK_OVERLAP_CHARS of text by construction; the overlap
+ * is dropped once so no sentence appears twice. A gap between non-consecutive chunks is marked
+ * with an ellipsis so the reader is not shown two distant passages as one continuous quote.
+ * Every chunk's text remains a verbatim substring of the result, which is what grounding needs.
+ */
+export function mergePieces(pieces: { ord: number; text: string }[], maxOverlap = 400): string {
+  const sorted = [...pieces].sort((a, b) => a.ord - b.ord);
+  let out = '';
+  let prevOrd: number | null = null;
+  for (const p of sorted) {
+    if (!out) {
+      out = p.text;
+    } else if (prevOrd !== null && p.ord === prevOrd + 1) {
+      const cut = overlapLength(out, p.text, maxOverlap);
+      out = cut ? `${out}${p.text.slice(cut)}` : `${out} ${p.text}`;
+    } else {
+      out = `${out} … ${p.text}`;
+    }
+    prevOrd = p.ord;
+  }
+  return out;
+}
+
+/** `retrieval-basics.pdf, p. 1` / `agent-loops-and-failure.md, § Grounding` / `notes.txt, line 42`. */
+export function passageTitle(c: Candidate): string {
+  const l = c.locator;
+  if (!l) return c.title;
+  if (l.page !== undefined) return `${c.title}, p. ${l.page}`;
+  if (l.heading !== undefined) return `${c.title}, § ${l.heading}`;
+  if (l.line !== undefined) return `${c.title}, line ${l.line}`;
+  return c.title;
+}
+
 function chooseSnippet(c: Candidate, query: string): string | null {
+  // A document source's snippet is the WHOLE retrieved text of that page/section (the merged
+  // chunks), not a 300-char passage chosen out of it. That text is what retrieval matched and
+  // what the model was shown; a narrower quote would cite less than the evidence, and the
+  // grounding check keys on document + locator. Bounded by the page/section length.
+  if (c.kind === 'doc') return c.text?.trim() ? c.text : null;
   if (c.text && c.text.trim()) return bestPassage(c.text, query);
   // No fetched text. The search snippet is only evidence if it is verbatim in text we read,
   // and by definition we read none — so this candidate is dropped.

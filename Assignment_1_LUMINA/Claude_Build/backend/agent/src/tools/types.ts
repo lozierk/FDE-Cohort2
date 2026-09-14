@@ -20,6 +20,15 @@ export interface ToolContext {
   searchCacheTtlSeconds: number;
   /** Set by web_search: false the moment any search in this request missed both tiers. */
   markSearch(hit: boolean): void;
+  /**
+   * Embedding tokens THIS request spent, added by whichever tool embedded something.
+   *
+   * It replaces reading `providers.embedder.tokensUsed` in the cost sum: that counter is
+   * cumulative for the life of the process, so the hundredth answer of a session was being
+   * billed for the ninety-nine before it. Per-request is the only number that can be checked
+   * against a bill.
+   */
+  addEmbeddingTokens(n: number): void;
   signal?: AbortSignal;
   log: Logger;
 }

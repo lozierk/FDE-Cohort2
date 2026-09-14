@@ -29,7 +29,9 @@ export const recallMemory: Tool = {
     const rows = await listMemories(ctx.userId);
     if (!rows.length) return { ok: true, content: 'No memories saved for this user yet.' };
 
+    const before = ctx.providers.embedder.tokensUsed;
     const [queryVec] = await ctx.providers.embedder.embed([query]);
+    ctx.addEmbeddingTokens(ctx.providers.embedder.tokensUsed - before);
     if (!queryVec) return { ok: false, error: 'embedder returned no vector for the recall query' };
 
     const ranked = rows
@@ -71,7 +73,9 @@ export const saveMemory: Tool = {
     if (!text) return { ok: false, error: 'save_memory needs non-empty text' };
     if (text.length > 500) return { ok: false, error: 'save_memory text must be under 500 characters' };
 
+    const before = ctx.providers.embedder.tokensUsed;
     const [vec] = await ctx.providers.embedder.embed([text]);
+    ctx.addEmbeddingTokens(ctx.providers.embedder.tokensUsed - before);
     if (!vec) return { ok: false, error: 'embedder returned no vector for the memory text' };
 
     const doc = await insertMemory({

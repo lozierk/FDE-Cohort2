@@ -42,6 +42,8 @@ export interface QuickLoopInput {
   threadId: string;
   requestId: string;
   spaceId?: string;
+  /** The attached Space's name and filenames, for the research prompt. Absent when none is. */
+  space?: { name: string; documents: string[] };
   /** Prior thread messages, oldest first. The loop uses the last 10. */
   history: { role: 'user' | 'assistant'; content: string }[];
   providers: Providers;
@@ -89,6 +91,7 @@ export async function runQuickLoop(input: QuickLoopInput): Promise<QuickLoopResu
   let uncachedSearches = 0;
   let searchCount = 0;
   let searchHits = 0;
+  let embeddingTokens = 0;
 
   const allowed = toolsForMode(input.mode);
   const allowedNames = new Set(allowed.map((t) => t.name));
@@ -108,6 +111,9 @@ export async function runQuickLoop(input: QuickLoopInput): Promise<QuickLoopResu
       searchCount += 1;
       if (hit) searchHits += 1;
       else uncachedSearches += 1;
+    },
+    addEmbeddingTokens(n: number) {
+      if (n > 0) embeddingTokens += n;
     },
     ...(input.signal ? { signal: input.signal } : {}),
     log: input.log
@@ -175,13 +181,11 @@ export async function runQuickLoop(input: QuickLoopInput): Promise<QuickLoopResu
      * user turn. Anything else and the model cannot tell a search that already happened from a
      * suggestion that one should — which it answers by searching again, for the whole prompt.
      */
-    if (input.mode === 'web' && history.length === 0 && allowedNames.has('web_search')) {
-      const first = await runTool('web_search', { query: input.query }, 'mode=web: search first');
-      const useId = 'toolu_lumina_preflight';
-      messages.push({
-        role: 'assistant',
-        content: [{ type: 'tool_use', id: useId, name: 'web_search', input: { query: input.query } }]
-      });
+    const preflight = async (tool: 'web_search' | 'search_documents', reason: string): Promise<void> => {
+      const args = { query: input.query };
+      const first = await runTool(tool, args, reason);
+      const useId = `toolu_lumina_preflight_${tool}`;
+      messages.push({ role: 'assistant', content: [{ type: 'tool_use', id: useId, name: tool, input: args }] });
       messages.push({
         role: 'user',
         content: [
@@ -194,9 +198,38 @@ export async function runQuickLoop(input: QuickLoopInput): Promise<QuickLoopResu
           { type: 'text', text: citableNumbersNotice(sources.toSources(input.query)) }
         ]
       });
+    };
+
+    if (input.mode === 'web' && history.length === 0 && allowedNames.has('web_search')) {
+      await preflight('web_search', 'mode=web: search first');
     }
 
-    const researchSystem = researchSystemPrompt({ mode: input.mode, depth: 'quick' });
+    /**
+     * The same argument, for documents. A fresh thread with a Space attached in `docs` mode
+     * cannot want anything else; in `auto` the Space is the cheapest place to look first and
+     * the model may still add web searches afterwards. Both save a model round trip (~1.6 s of
+     * a 2.5 s TTFT budget) on every gold question, and in `auto` it is what guarantees a
+     * `search_documents` step exists in the trace instead of hoping the router reaches for it.
+     */
+    if (
+      input.spaceId &&
+      history.length === 0 &&
+      (input.mode === 'docs' || input.mode === 'auto') &&
+      allowedNames.has('search_documents')
+    ) {
+      await preflight(
+        'search_documents',
+        input.mode === 'docs'
+          ? 'mode=docs: search the Space first'
+          : 'mode=auto: a Space is attached, search it first'
+      );
+    }
+
+    const researchSystem = researchSystemPrompt({
+      mode: input.mode,
+      depth: 'quick',
+      ...(input.space ? { space: input.space } : {})
+    });
     const toolDefs = allowed.map((t) => ({
       name: t.name,
       description: t.description,
@@ -319,7 +352,7 @@ export async function runQuickLoop(input: QuickLoopInput): Promise<QuickLoopResu
       );
     }
 
-    const costUsd = totalCost(usage, uncachedSearches, input.providers);
+    const costUsd = totalCost(usage, uncachedSearches, embeddingTokens);
     return {
       answerId: newId('ans'),
       answer,
@@ -346,7 +379,7 @@ export async function runQuickLoop(input: QuickLoopInput): Promise<QuickLoopResu
       terminated,
       error,
       usage,
-      costUsd: totalCost(usage, uncachedSearches, input.providers),
+      costUsd: totalCost(usage, uncachedSearches, embeddingTokens),
       searchCached: searchCount > 0 && searchHits === searchCount,
       ttftMs,
       latencyMs: now() - startedAt,
@@ -357,11 +390,17 @@ export async function runQuickLoop(input: QuickLoopInput): Promise<QuickLoopResu
 
 type ToolResult0 = { ok: true; content: string } | { ok: false; error: string };
 
-function totalCost(usage: TokenUsage, uncachedSearches: number, providers: Providers): number {
+/**
+ * Every dollar this request spent: measured LLM usage at the published rates, one flat rate
+ * per uncached provider search, and the embedding tokens THIS request asked for.
+ *
+ * The embedding term used to read `providers.embedder.tokensUsed`, which is cumulative for the
+ * life of the process — so the hundredth answer in a session was billed for the ninety-nine
+ * before it, and `costUsd` drifted upward all day. The counter now comes from the loop.
+ */
+function totalCost(usage: TokenUsage, uncachedSearches: number, embeddingTokens: number): number {
   return (
-    llmCostUsd(usage) +
-    uncachedSearches * SEARCH_USD_PER_CALL +
-    embeddingCostUsd(providers.embedder.tokensUsed)
+    llmCostUsd(usage) + uncachedSearches * SEARCH_USD_PER_CALL + embeddingCostUsd(embeddingTokens)
   );
 }
 

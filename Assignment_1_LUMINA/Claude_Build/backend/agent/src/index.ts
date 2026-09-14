@@ -37,15 +37,18 @@
  *     that escalates itself is a product with an unbounded bill.
  */
 import express from 'express';
+import { fork, type ChildProcess } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { HealthResponse, ROUTES } from '@lumina/contract';
 import { env, secrets } from './env.js';
-import { pingDb, vectorBackend } from './db.js';
+import { closeDb, mongoUriInUse, pingDb, vectorBackend } from './db.js';
 import { log } from './log.js';
 import { makeProviders } from './providers/index.js';
 import { ensureIndexes } from './store/index.js';
 import { askRoutes } from './routes/ask.js';
 import { memoryRoutes } from './routes/memory.js';
+import { spaceRoutes } from './routes/spaces.js';
 import { statsRoutes } from './routes/stats.js';
 import { threadRoutes } from './routes/threads.js';
 import { requestId, sendError } from './routes/context.js';
@@ -89,6 +92,9 @@ app.use(threadRoutes);
 app.use(askRoutes(providers));
 app.use(memoryRoutes);
 app.use(statsRoutes);
+// Mounted BEFORE the 501 loop below: a registered handler wins, so the four /spaces routes
+// leave the not-implemented list by being implemented rather than by a special case in it.
+app.use(spaceRoutes);
 
 // ---------------------------------------------------------------- everything else: 501
 
@@ -115,7 +121,94 @@ app.use((err: Error, req: express.Request, res: express.Response, _next: express
 
 export { app };
 
-app.listen(env.port, () => {
+// ---------------------------------------------------------------- the jobs worker child
+
+/**
+ * One OS process for the CPU-heavy work (DESIGN.md trade-off 3). `fork` rather than `spawn`
+ * because tsx puts its loader in `process.execArgv`, so passing `execArgv: process.execArgv`
+ * makes ONE code path work under both `npx tsx src/index.ts` and `node dist/index.js`.
+ * Verified on Node 22.17.1: under tsx the child inherits
+ * `--require .../tsx/dist/preflight.cjs --import .../tsx/dist/loader.mjs` and compiles
+ * `worker.ts` itself; under plain node `execArgv` is empty and the sibling is `worker.js`.
+ * No `spawn(process.execPath, ['--import', 'tsx', ...])` fallback was needed.
+ *
+ * The child's module is this file's sibling, with this file's own extension — that is what
+ * keeps the dev and the built path from being two different pieces of wiring.
+ */
+const WORKER_RESTART_MIN_MS = 5_000;
+const WORKER_RESTART_MAX_MS = 60_000;
+
+let workerChild: ChildProcess | null = null;
+let workerBackoffMs = WORKER_RESTART_MIN_MS;
+let shuttingDown = false;
+
+function workerModulePath(): string {
+  const self = fileURLToPath(import.meta.url);
+  return self.replace(/index\.(m?[jt]s)$/, 'worker.$1');
+}
+
+async function startWorkerChild(): Promise<void> {
+  // Hand the child the URI the parent actually resolved, so an in-memory fallback is ONE
+  // mongod shared by both processes rather than two that cannot see each other's jobs.
+  const uri = await mongoUriInUse();
+  const modulePath = workerModulePath();
+
+  const child = fork(modulePath, [], {
+    execArgv: process.execArgv,
+    // VECTOR_BACKEND travels too: with the in-memory fallback the parent's `env.mongoUri` is
+    // empty (→ mongo-cosine-scan) but the child's is the resolved URI, and without this the
+    // child's probe would run $vectorSearch against a mongod that has none.
+    env: { ...process.env, MONGODB_URI: uri, VECTOR_BACKEND: vectorBackend(), WORKER: 'none' }
+  });
+  workerChild = child;
+
+  child.once('spawn', () => {
+    log.info({ pid: child.pid, module: modulePath }, 'jobs worker child started');
+    // Reset the backoff only once the child has STAYED up for a minute. Resetting on spawn
+    // would make a child that dies at boot restart every 5 s forever.
+    setTimeout(() => {
+      if (workerChild === child) workerBackoffMs = WORKER_RESTART_MIN_MS;
+    }, WORKER_RESTART_MAX_MS).unref();
+  });
+
+  child.on('exit', (code, signal) => {
+    workerChild = null;
+    if (shuttingDown) return;
+    log.error({ code, signal, restartInMs: workerBackoffMs }, 'jobs worker child exited — restarting');
+    const wait = workerBackoffMs;
+    workerBackoffMs = Math.min(WORKER_RESTART_MAX_MS, workerBackoffMs * 2);
+    setTimeout(() => {
+      void startWorkerChild().catch((err: Error) =>
+        log.error({ err: err.message }, 'failed to restart the jobs worker child')
+      );
+    }, wait).unref();
+  });
+
+  child.on('error', (err) => log.error({ err: err.message }, 'jobs worker child error'));
+}
+
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  process.on(signal, () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    // Stop accepting, let in-flight answers finish, give the child a moment to release its
+    // job lease cleanly, then close the pool. A hard cap so a stuck stream cannot hold the
+    // process open forever.
+    server.close();
+    const child = workerChild;
+    child?.kill(signal);
+    const finish = () => {
+      closeDb()
+        .catch(() => undefined)
+        .finally(() => process.exit(0));
+    };
+    if (child) child.once('exit', finish);
+    else finish();
+    setTimeout(finish, 3_000).unref();
+  });
+}
+
+const server = app.listen(env.port, () => {
   log.info(
     {
       port: env.port,
@@ -124,14 +217,24 @@ app.listen(env.port, () => {
       searchProvider: providers.search.name,
       embedder: providers.embedder.model,
       vectorStore: vectorBackend(),
+      worker: env.worker,
       caps: {
         quick: { toolCalls: env.maxToolCalls, wallClockSec: env.maxWallClockSec },
         deep: { toolCalls: env.maxToolCallsDeep, wallClockSec: env.maxWallClockSecDeep, dailyCap: env.deepDailyCap }
-      }
+      },
+      rag: { topK: env.ragTopK, candidates: env.ragCandidates, rrfK: env.ragRrfK, chunkChars: env.chunkChars }
     },
-    'agent up — quick loop, threads, memory and stats are live; spaces and deep search are still 501'
+    'agent up — quick loop, threads, memory, stats, spaces and RAG are live; deep search is still 501'
   );
   // Warm the connection and the indexes so the first question does not pay for them, and so a
   // Mongo that is unreachable shows up in the log at boot rather than in a user's answer.
   ensureIndexes().catch((err: Error) => log.error({ err: err.message }, 'index setup failed'));
+
+  if (env.worker === 'child') {
+    void startWorkerChild().catch((err: Error) =>
+      log.error({ err: err.message }, 'failed to start the jobs worker child')
+    );
+  } else {
+    log.warn({ worker: env.worker }, 'WORKER=none — uploads will stay pending unless `npm run worker` is running');
+  }
 });

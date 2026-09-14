@@ -15,6 +15,8 @@ export interface PromptContext {
   mode: AskMode;
   depth: Depth;
   memories?: string[];
+  /** The attached Space and what it holds, so `auto` knows the documents exist before it guesses. */
+  space?: { name: string; documents: string[] };
   /** Injectable for tests; defaults to now. */
   now?: Date;
 }
@@ -37,14 +39,22 @@ const memoryBlock = (memories?: string[]): string =>
 export function researchSystemPrompt(ctx: PromptContext): string {
   const scope =
     ctx.mode === 'docs'
-      ? 'Look only in the user\'s uploaded documents.'
+      ? 'Look only in the user\'s uploaded documents; do not call web tools.'
       : ctx.mode === 'web'
         ? 'Look on the web.'
         : 'Decide for yourself whether the web, the user\'s documents, or both will answer this.';
 
+  // Naming the files is what turns `auto` from a guess into a decision. Told only "a Space is
+  // attached", the model searches the web for something four uploaded PDFs already answer.
+  const spaceNotice = ctx.space
+    ? `The user attached the Space "${ctx.space.name}" holding: ${ctx.space.documents.join(', ')}. ` +
+      'Prefer search_documents for anything these could answer; use the web only for what they do not cover.'
+    : '';
+
   return [
     'You are LUMINA\'s research step. Your job in this step is to GATHER EVIDENCE, not to answer.',
     scope,
+    ...(spaceNotice ? [spaceNotice] : []),
     todayLine(ctx.now),
     '',
     'How to work:',

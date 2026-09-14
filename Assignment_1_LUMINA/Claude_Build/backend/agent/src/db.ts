@@ -46,6 +46,18 @@ export async function db(): Promise<Db> {
   return connecting;
 }
 
+/**
+ * The URI actually in use, once the in-memory fallback has resolved one.
+ *
+ * The forked worker needs it: with MONGODB_URI empty, parent and child would each start their
+ * OWN in-memory mongod and the child would poll an empty `jobs` collection forever. Handing it
+ * the parent's URI is what makes a keyless local run work end to end.
+ */
+export async function mongoUriInUse(): Promise<string> {
+  await db();
+  return env.mongoUri || resolvedUri;
+}
+
 export async function pingDb(): Promise<'ok' | 'down'> {
   try {
     await (await db()).command({ ping: 1 });

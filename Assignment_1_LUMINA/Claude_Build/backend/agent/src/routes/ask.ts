@@ -6,7 +6,7 @@ import { doneEventFor, runQuickLoop } from '../loop/quick.js';
 import type { Providers } from '../providers/index.js';
 import { writeRunLog } from '../runlog.js';
 import { SseStream } from '../sse.js';
-import { appendMessage, getThread, listMessages } from '../store/index.js';
+import { appendMessage, getSpace, getThread, listDocuments, listMessages } from '../store/index.js';
 import { requireUser, sendError } from './context.js';
 
 export function askRoutes(providers: Providers): Router {
@@ -43,6 +43,21 @@ export function askRoutes(providers: Providers): Router {
       return;
     }
 
+    // An unknown Space, or one belonging to someone else, is a 404 BEFORE any streaming starts.
+    // Once the first SSE frame is out the status line is spent, and the caller would get a
+    // 200 carrying an answer about nothing.
+    let space: { name: string; documents: string[] } | undefined;
+    if (spaceId) {
+      const row = await getSpace(userId, spaceId);
+      if (!row) {
+        sendError(res, 404, `no space ${spaceId}`);
+        return;
+      }
+      // Filenames go into the research prompt so `auto` knows what the Space can answer.
+      const docs = await listDocuments(spaceId);
+      space = { name: row.name, documents: docs.map((d) => d.title) };
+    }
+
     const prior = await listMessages(threadId);
     const history = prior.map((m) => ({ role: m.role, content: m.content }));
     await appendMessage({ threadId, userId, role: 'user', content: query });
@@ -59,6 +74,7 @@ export function askRoutes(providers: Providers): Router {
       threadId,
       requestId,
       ...(spaceId ? { spaceId } : {}),
+      ...(space ? { space } : {}),
       history,
       providers,
       caps: { maxToolCalls: env.maxToolCalls, maxWallClockSec: env.maxWallClockSec },

@@ -1,6 +1,19 @@
 import { config } from 'dotenv';
 import { resolve } from 'node:path';
 import { MODEL_ID } from './config/model.js';
+import {
+  CHUNK_CHARS,
+  CHUNK_OVERLAP_CHARS,
+  EMBED_BATCH,
+  MAX_UPLOAD_MB,
+  RAG_CANDIDATES,
+  RAG_RRF_K,
+  RAG_TOP_K,
+  RAG_VECTOR_NUM_CANDIDATES,
+  WORKER_LEASE_SEC,
+  WORKER_MAX_ATTEMPTS,
+  WORKER_POLL_MS
+} from './config/rag.js';
 
 // The single .env at the assignment root. Provider keys are read HERE and nowhere else.
 config({ path: resolve(process.cwd(), '../../.env') });
@@ -43,6 +56,29 @@ export const env = {
   maxWallClockSec: num(process.env.MAX_WALL_CLOCK_SEC, 90),
   maxToolCallsDeep: num(process.env.MAX_TOOL_CALLS_DEEP, 24),
   maxWallClockSecDeep: num(process.env.MAX_WALL_CLOCK_SEC_DEEP, 240),
+
+  /**
+   * `child`: index.ts forks the jobs worker at boot (DESIGN.md trade-off 3, one deploy).
+   * `none`: it does not — what tests use, and what a two-process deploy uses alongside
+   * `npm run worker`. Parsing a 60-page PDF on the thread streaming an answer is the failure
+   * the bench's search-p95-during-ingest ratio exists to catch, so the default is a process.
+   */
+  worker: (process.env.WORKER ?? 'child') as 'child' | 'none',
+  workerPollMs: num(process.env.WORKER_POLL_MS, WORKER_POLL_MS),
+  /** A `running` job whose `claimedAt` is older than this is swept back to `pending`. */
+  workerLeaseSec: num(process.env.WORKER_LEASE_SEC, WORKER_LEASE_SEC),
+  /** After this many claims the job is `failed` and its document `failed` with the last error. */
+  workerMaxAttempts: num(process.env.WORKER_MAX_ATTEMPTS, WORKER_MAX_ATTEMPTS),
+
+  // Ingest and retrieval. Declared in config/rag.ts; these are the deploy-time overrides.
+  maxUploadMb: num(process.env.MAX_UPLOAD_MB, MAX_UPLOAD_MB),
+  chunkChars: num(process.env.CHUNK_CHARS, CHUNK_CHARS),
+  chunkOverlapChars: num(process.env.CHUNK_OVERLAP_CHARS, CHUNK_OVERLAP_CHARS),
+  embedBatch: num(process.env.EMBED_BATCH, EMBED_BATCH),
+  ragTopK: num(process.env.RAG_TOP_K, RAG_TOP_K),
+  ragCandidates: num(process.env.RAG_CANDIDATES, RAG_CANDIDATES),
+  ragVectorNumCandidates: num(process.env.RAG_VECTOR_NUM_CANDIDATES, RAG_VECTOR_NUM_CANDIDATES),
+  ragRrfK: num(process.env.RAG_RRF_K, RAG_RRF_K),
 
   nodeEnv: process.env.NODE_ENV ?? 'development',
   logLevel: process.env.LOG_LEVEL ?? 'info',

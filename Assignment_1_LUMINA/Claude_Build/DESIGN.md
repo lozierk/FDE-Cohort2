@@ -1,8 +1,9 @@
 # DESIGN.md — LUMINA (Claude build)
 
-> v1.0, 2026-09-11. Drafted 2026-09-09 as v0.1; the two open trade-offs (LLM provider, worker
-> placement) were decided by Kurt on 2026-09-11. The five graded headings below are read by
-> `eval/build-report.mjs`. Nothing here is built yet.
+> v1.1, 2026-09-14. Drafted 2026-09-09 as v0.1; the two open trade-offs (LLM provider, worker
+> placement) were decided by Kurt on 2026-09-11 as v1.0. v1.1 updates the design to match the
+> week 2 build: Spaces, ingest, hybrid retrieval, and deep search are now running. The five
+> graded headings below are read by `eval/build-report.mjs`.
 
 ## Components
 
@@ -22,6 +23,16 @@ Haiku 4.5, `claude-haiku-4-5`), OpenAI for embeddings, Tavily for web search.
 carry state the grader reads and are the only component that is neither a service nor a
 collection.
 
+Spaces and document ingest are built. Upload writes to a GridFS bucket (`uploads`) and a `jobs`
+row; the jobs worker is a forked child process of the agent service, not a thread on the request
+path. It inherits the vector backend setting from its parent, restarts on crash with growing
+backoff, and shuts down on `SIGTERM` alongside the parent. Consequence: the agent service needs a
+long-lived host, which is why it stays off Vercel; the gateway can run on either Vercel or Fly.
+Retrieval is hybrid: Atlas Vector Search plus an Atlas Search text index, fused with reciprocal
+rank fusion, no re-rank step. Deep search (`depth: "deep"`) is built too: a forced planning call,
+a bounded fan-out over sub-questions sharing one source registry, and a synthesis pass, detailed
+under Communication and State below.
+
 ## Responsibilities
 
 The gateway is the only component the browser may reach, and it holds no provider key. The
@@ -34,6 +45,16 @@ its probe finds one of its own chunks through the vector index. Atlas's TTL inde
 thing that expires the search cache. The gateway's rate limit and the agent's daily cap are
 deliberately separate: a limit you can bypass by reaching the agent directly is not a limit,
 so the spend gate lives next to the spending.
+
+Parsing is page-aware: a chunk never crosses a PDF page or a Markdown section, one chunk per
+page or section slice. Same-page chunks retrieved together merge into one source with a locator
+(page or heading), and the snippet is the whole merged chunk text — the recall check keys on page
+match and the grounding check keys on `docId` plus locator, top 5 only, so a query-chosen passage
+would fail both. Deep search owns its own cap: it reserves one of `DEEP_DAILY_CAP` (5) credits per
+user per UTC day before anything else runs, atomically, in a `deepQuota` collection; the credit is
+refunded only if planning fails before any retrieval starts. The quick loop's research phase
+(opener, preflight, tool loop) now lives in one shared function, `loop/research.ts`, that both
+gears call; quick behavior is unchanged.
 
 ## Communication
 
@@ -49,6 +70,24 @@ provider names. When the worker is down, uploads still return `202` and document
 visibly `pending`; nothing is lost because the job row is the record. The worker stays inside
 the agent app rather than a separate Fly app: see Trade-offs.
 
+Docs mode answers straight from the preflight document search when it found anything; the model
+may request at most `DOCS_EXTRA_SEARCHES` (1) more, enforced in the loop and stated in the trace
+`reason`. That change took docs-mode TTFT p95 from 12.35 s to 1.62 s, because every recall hit
+had already come from the preflight search.
+
+Deep search sends its `plan` frame as the first paint, before any retrieval. The planner prompt
+is deliberately terse — fifteen-word questions, six-word reasons — because output tokens are the
+latency: 330–400 tokens measured at 3.0–4.9 s, about 245 tokens at 2.4–3.5 s, against a 4 s gate.
+Sub-questions then fan out over a pool of `DEEP_CONCURRENCY` (3), sharing one source registry, one
+tool-call ledger (cap 24, in-flight calls counted), and one wall clock (240 s). Each sub-question
+preflights its own search and gets a per-sub budget derived from the plan size, so the shared cap
+is never hit on finished work — six sub-questions get three calls each, five or fewer get four. A
+failure in one sub-question aborts the others and ends the stream with an `error` frame. Merge is
+free because there is one registry: one citation numbering, dedupe by url or `docId`+locator, each
+source credited to the sub-question that found it first. Synthesis reads up to 4 passages per
+sub-question, 20 total, grouped under the sub-question that found them, and writes a direct
+answer, one section per sub-question, then "What is still unknown."
+
 ## State
 
 Atlas is authoritative for everything a user would miss: threads, messages, memories with
@@ -61,7 +100,12 @@ is `pending` when the `202` returns, `parsing` and `embedding` while the worker 
 `indexed` only after the worker queries the vector index for a chunk it just wrote and gets
 it back; until then a search of that Space says the document is not yet searchable instead
 of silently returning nothing. Atlas Search is eventually consistent, so the probe retries
-with backoff and the document fails loudly if it never becomes visible.
+with backoff and the document fails loudly if it never becomes visible. Atlas Search lags
+writes by about 3 s, so the worker waits for the probe rather than trusting the write. GridFS
+uses one bucket per process, with indexes ensured at boot; without that, the first upload of a
+process paid about 456 ms for driver index checks. `deepQuota` rows carry a TTL and expire two
+to three days after the day they govern. `/stats.deepToday` counts request rows and is a
+report; the quota collection is the gate, and the two can differ by refunded planning failures.
 
 ## Trade-offs
 
@@ -95,6 +139,23 @@ with backoff and the document fails loudly if it never becomes visible.
 5. **Quick as the default with no server-side upgrade** is a requirement, not a trade-off,
    but it costs something real: a user who asks a deep question in quick mode gets a shallow
    answer, and the UI toggle is the only remedy.
+6. **No re-rank step after hybrid retrieval.** Reciprocal rank fusion over Atlas Vector Search
+   and Atlas Search already put every gold answer in the top 5 (recall@5 39/39 on the gold set),
+   so a re-ranker would add a model turn — about 2 s on Haiku — for no measured gain. Given up:
+   headroom against a harder or larger corpus than the gold set covers.
+7. **The gateway rate limit is 300 requests per minute**, not the code default of 30, set by
+   `RATE_LIMIT_PER_MINUTE` for the bench and the deployed gateway. The bench's own status
+   polling during ingest would have tripped 30; the code default stays conservative for a
+   deployment the bench doesn't drive. Measured week 2 numbers (Atlas, real providers): recall@5
+   39/39; upload 202 accept 181–212 ms (gate p95 300); docs TTFT p95 1.62 s; docs cost $0.002 per
+   answer; deep on the four bench questions: plan 2.4–3.5 s, distinct sources 2.7–7.0× the quick
+   run of the same question (gate 2.0×), cost $0.086–0.137 (gate $0.35), wall clock 32–48 s (gate
+   90 s); deep during a 60-page ingest ran in 31.8 s versus 47.9 s idle, and the document itself
+   indexed in 11.9 s.
+8. **Source numbers are assigned on first registration and never reassigned**, so the visible
+   list can have gaps when a search result was never fetched. Kept on purpose: the research model
+   already saw those numbers in tool results, and a stable number is worth more than a
+   contiguous one.
 
 ## Reading notes (not graded; kept here so a stranger sees what we read and judged)
 

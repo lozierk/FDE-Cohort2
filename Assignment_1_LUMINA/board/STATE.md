@@ -1,15 +1,15 @@
 # STATE — LUMINA (Assignment 1), Claude and Codex builds
 
-As of Claude close (CLAUDE-067, 2026-09-14 13:20 ET). Editor: unclaimed after explicit release (CLAUDE-067); claim before editing. Evidence IDs resolve in archive or messages.
+As of Claude close (CLAUDE-068, 2026-09-14 15:27 ET). Editor: unclaimed after explicit release (CLAUDE-068; Claude held the lease 15:27–15:30 ET for this refresh); claim before editing. Evidence IDs resolve in archive or messages.
 
-Both sessions closed. Latest Codex handoff: `Codex_Build/Resume_from_20260909_1333.md`; Claude: `Claude_Build/Resume_from_20260914_1320.md`. No active polling or automatic wake implied.
+Both sessions closed. Latest Codex handoff: `Codex_Build/Resume_from_20260909_1333.md`; Claude: `Claude_Build/Resume_from_20260914_1527.md`. No active polling or automatic wake implied.
 
 ## Registry
 - Program `fde-cohort2` · Project `lumina-a1` · Repo `lozierk/FDE-Cohort2` (private), path `Assignment_1_LUMINA/`; builds `Claude_Build/` (Claude) and `Codex_Build/` (Codex). Upstream starter pinned at `1442b05`, tree hash `c75bc544640cce93`.
 - Participants (identity ≠ model ≠ session): `CLAUDE` agent, harness Claude Code, model label Claude Fable 5.1 · `CODEX` agent, harness Codex CLI, model label GPT-6-based (unverified snapshot, CODEX-031) · `KURT` human principal; verified channel = Telegram reply ingested by `shared/check_kurt_replies.sh`; terminal statements are relayed by the agent that heard them.
 
 ## Where we are
-**Kurt's direction 2026-09-11 (CLAUDE-063):** Claude proceeds solo in `Claude_Build/`; Codex catches up later, scope Kurt's call; no wargame for now. `Claude_Build/DESIGN.md` v1.0 final (CLAUDE-064). Week 1 code landed (`28c2b00`, CLAUDE-065). **2026-09-14 (CLAUDE-067):** all keys verified; Atlas `lumina-claude` (M0, us-east-1, db `lumina_claude`) live with all indexes queryable; first real Haiku asks done and tuned (5/5 grounded, $0.013–0.031, TTFT 3.7–7.7 s vs 2.5 s p95); four defects fixed. Kurt: stay on Haiku, A/B Sonnet 5 for synthesis next, OpenRouter/GLM/Kimi deferred to after eval. Peer submission reviewed (lessons in the resume). **Next:** Sonnet A/B → Kurt's TTFT decision → spaces/worker/RAG → deep → deploy → eval. Deadline Fri 2026-09-18.
+**Kurt's direction 2026-09-11 (CLAUDE-063):** Claude proceeds solo in `Claude_Build/`; Codex catches up later, scope Kurt's call; no wargame for now. `Claude_Build/DESIGN.md` v1.0 final (CLAUDE-064). Week 1 code landed (`28c2b00`, CLAUDE-065). **2026-09-14 (CLAUDE-067):** all keys verified; Atlas `lumina-claude` (M0, us-east-1, db `lumina_claude`) live with all indexes queryable; first real Haiku asks done and tuned (5/5 grounded, $0.013–0.031, TTFT 3.7–7.7 s vs 2.5 s p95); four defects fixed. Kurt: stay on Haiku, A/B Sonnet 5 for synthesis next, OpenRouter/GLM/Kimi deferred to after eval. Peer submission reviewed (lessons in the resume). **2026-09-14 15:27 (CLAUDE-068):** Week 2 part A built, reviewed, measured, committed (`b941f39`, `3d82e0a`): spaces, child-process worker, hybrid RAG, doc citations with locators; recall@5 39/39, 202 accept ≤ 212 ms, docs TTFT p95 1.62 s (Kurt approved answer-from-preflight), $0.002/answer; 64 tests. Part B deep-search spec written (`Claude_Build/docs/week2-deep-build-spec.md`). Rate limit 300/min for the bench (Kurt). Agent must deploy on Fly (child-process worker). **Next:** part B deep → Sonnet A/B → Kurt's web-TTFT call → runs/failing → bench → deploy → eval. Deadline Fri 2026-09-18.
 
 ## Gates and approvals (data, not prose)
 - `trial_ceiling_usd: 10` · scope: LUMINA endpoint-validation trial only, all-in · approved_by KURT (relayed, CLAUDE-035; confirmed CODEX-041) · full bench/eval budget: NOT set (Q-4).
@@ -39,9 +39,9 @@ Both sessions closed. Latest Codex handoff: `Codex_Build/Resume_from_20260909_13
 - Closed: Q-1..Q-3, Q-7..Q-11 (archive registers); Q-12 starter copy (CODEX-066); Q-14 migration review, commit cleared (CODEX-067)
 
 ## Pending work
-- Claude: Week 1 validated on real providers + Atlas. Next: Sonnet-synthesis A/B, TTFT decision (Kurt), spaces/worker/RAG, deep search, deploy, eval. Resume: `Claude_Build/Resume_from_20260914_1320.md`.
+- Claude: Week 2 part A done. Next: part B deep search (spec ready), Sonnet-synthesis A/B, web-TTFT decision (Kurt), runs/failing, bench, deploy, eval. Resume: `Claude_Build/Resume_from_20260914_1527.md`.
 - Codex: contract/grader review; DESIGN.md draft; red-team of Claude's DESIGN (Q-10 file names).
-- Kurt: TTFT loop-change decision; Sonnet stays or not after the A/B; Q-4 spend ceiling before the bench; Codex's scope; optional wargame later.
+- Kurt: delete the two leftover Atlas test Spaces (`spc_mu1l7uvtwd49s4`, `spc_mu1l9wqh2k5tda`) or approve the cleanup; web-mode TTFT loop change; Sonnet stays or not after the A/B; Q-4 spend ceiling before the bench; gateway deploy target (Fly vs Vercel); Codex's scope.
 
 ## Checkpoints
 See `board/MANIFEST.md`: archive SHA-256, highest legacy IDs (CLAUDE 054, CODEX 064), read checkpoints at cutover, receipts empty at cutover.

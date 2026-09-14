@@ -219,6 +219,52 @@ test('mode=web on an empty thread searches before the first LLM call, and mode=a
   assert.equal(auto.search.queries.length, 0, 'auto asks the model first');
 });
 
+test('mode=web on a fresh thread answers straight from the preflight when it returned two pages of text', async () => {
+  searchLru.clear();
+  // ONE scripted turn: the fake search returns two results with content, so the loop never
+  // asks the model whether to search again; the single turn is the synthesis.
+  const web = harness([{ text: 'From the preflight [1] and [2].' }], { mode: 'web' });
+  const result = await runQuickLoop(web.input);
+  assert.equal(result.terminated, 'done');
+  assert.equal(web.search.queries.length, 1, 'the preflight search is the only retrieval');
+  assert.equal(web.frames.filter((f) => f.event === 'trace').length, 1, 'the preflight is the only step');
+  assert.equal(web.llm.calls.length, 1, 'no research turn: the one model call was the synthesis');
+  assert.equal(web.llm.calls[0]?.tools?.length ?? 0, 0, 'the synthesis call offers no tools');
+  assert.match(result.answer, /From the preflight \[1\] and \[2\]/);
+  const sources = SourcesEvent.parse(web.frames.find((f) => f.event === 'sources')!.data);
+  assert.equal(sources.length, 2);
+  assert.deepEqual(unresolvedCitations(result.answer, sources), []);
+
+  // A follow-up on the same thread keeps its research turn: no preflight, the model decides.
+  searchLru.clear();
+  const followUp = harness([{ text: 'ready' }, { text: 'Still [1].' }], {
+    mode: 'web',
+    history: [{ role: 'user', content: 'What is Tavily?' }, { role: 'assistant', content: 'A search API.' }]
+  });
+  await runQuickLoop(followUp.input);
+  assert.equal(followUp.search.queries.length, 0, 'no preflight on a follow-up');
+  assert.equal(followUp.llm.calls.length, 2, 'research turn, then synthesis');
+});
+
+test('mode=web keeps its research turn when the preflight found fewer than two pages of text', async () => {
+  searchLru.clear();
+  const web = harness([{ tool: 'fetch_page', input: { url: 'https://example.test/only/1' } }, { text: 'ready' }, { text: 'Thin [1].' }], {
+    mode: 'web'
+  });
+  // One result with text, one without: under the threshold, so the model gets its turn.
+  web.search.search = async (query: string) => {
+    web.search.queries.push(query);
+    return [
+      { title: 'one', url: 'https://example.test/only/1', snippet: 's', content: `${query} is described here in enough prose to quote from.` },
+      { title: 'two', url: 'https://example.test/only/2', snippet: 'no page text' }
+    ];
+  };
+  await runQuickLoop(web.input);
+  assert.equal(web.search.queries.length, 1, 'the preflight ran');
+  assert.ok(web.llm.calls.length >= 2, 'a research turn ran before the synthesis');
+  assert.ok(web.llm.calls[0]?.tools?.length, 'the first model call offered tools: it was a research turn');
+});
+
 test('empty retrieval produces an answer with no sources and no citations', async () => {
   searchLru.clear();
   const { frames, input } = harness([{ text: 'ready' }, { text: 'The sources do not answer this.' }]);

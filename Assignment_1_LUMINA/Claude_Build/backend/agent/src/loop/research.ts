@@ -9,6 +9,9 @@ import type { Tool, ToolContext } from '../tools/types.js';
 import { citableNumbersNotice } from './prompts.js';
 import type { SourceRegistry } from './sources.js';
 
+/** Pages with fetched text the web preflight must return before the quick loop skips its research turn. */
+export const WEB_PREFLIGHT_MIN_SOURCES = 2;
+
 /**
  * The research phase, on its own, because a deep search runs it once per sub-question while a
  * quick search runs it once. Everything here used to be phase 1 of `runQuickLoop`; the quick
@@ -180,14 +183,28 @@ export async function runResearch(input: ResearchInput): Promise<ResearchResult>
     return first;
   };
 
-  /** The preflight already answered a docs-mode question; a model turn here can only re-search. */
+  /** The preflight already answered the question; a model turn here can only re-search. */
   let skipResearch = false;
 
   // The cap is checked before the preflight too, not only inside the turn loop: deep launches
   // a sub-question with one call left and would otherwise spend two on its two preflights,
   // and 25 trace steps under a cap of 24 fails the budget gate by one.
   if (input.preflight.web && allowedNames.has('web_search') && !sharedCapReached()) {
-    await preflight('web_search', input.subQuestion ? `sub-question ${input.subQuestion}: search first` : 'mode=web: search first');
+    const first = await preflight('web_search', input.subQuestion ? `sub-question ${input.subQuestion}: search first` : 'mode=web: search first');
+    /**
+     * web mode, fresh thread, quick run, and the search came back with page text for at
+     * least WEB_PREFLIGHT_MIN_SOURCES results: go straight to synthesis, the docs-mode rule
+     * applied to the web. Measured 2026-09-14 over 25 quick web runs: the cold search took
+     * 1.3-2.9 s, each research turn ~2 s, and the median run spent one turn to fetch one more
+     * page — so TTFT ran 4.7-13 s against a 2.5 s p95 gate. `toSources` already drops any
+     * result without fetched text, so its length is the count of citable pages. Under the
+     * threshold (one page, or none) the model keeps its turn, to fetch or reformulate. Deep
+     * sub-questions keep theirs too: their per-sub budget exists to read further, and the
+     * source-ratio gate is what pays for it.
+     */
+    if (!input.subQuestion && input.mode === 'web' && first.ok && registry.toSources(input.question).length >= WEB_PREFLIGHT_MIN_SOURCES) {
+      skipResearch = true;
+    }
   }
 
   /**

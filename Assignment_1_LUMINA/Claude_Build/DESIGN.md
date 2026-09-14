@@ -1,9 +1,10 @@
 # DESIGN.md — LUMINA (Claude build)
 
-> v1.1, 2026-09-14. Drafted 2026-09-09 as v0.1; the two open trade-offs (LLM provider, worker
+> v1.2, 2026-09-14. Drafted 2026-09-09 as v0.1; the two open trade-offs (LLM provider, worker
 > placement) were decided by Kurt on 2026-09-11 as v1.0. v1.1 updates the design to match the
-> week 2 build: Spaces, ingest, hybrid retrieval, and deep search are now running. The five
-> graded headings below are read by `eval/build-report.mjs`.
+> week 2 build: Spaces, ingest, hybrid retrieval, and deep search are now running. v1.2 applies
+> the docs-mode preflight rule to web mode (Kurt, 2026-09-14). The five graded headings below
+> are read by `eval/build-report.mjs`.
 
 ## Components
 
@@ -74,6 +75,19 @@ Docs mode answers straight from the preflight document search when it found anyt
 may request at most `DOCS_EXTRA_SEARCHES` (1) more, enforced in the loop and stated in the trace
 `reason`. That change took docs-mode TTFT p95 from 12.35 s to 1.62 s, because every recall hit
 had already come from the preflight search.
+
+Web mode now follows the same rule on a fresh thread: when the preflight search returns page
+text for at least two results (`WEB_PREFLIGHT_MIN_SOURCES`), the loop goes straight to
+synthesis. Before the change, 25 quick web runs showed the cold search at 1.3–2.9 s, each
+research turn about 2 s, and a median of one extra fetch — TTFT 4.7–13 s against the 2.5 s p95
+gate. After it, ten cold questions ran 1.8–3.6 s TTFT (median 2.4 s) and ten warm repeats
+0.6–0.9 s, at $0.011–0.012 cold and $0.003–0.004 warm. What remains is Tavily itself:
+1.0–2.3 s on a cold query whether or not raw content is requested (measured both ways, five
+queries each), plus about 0.7 s to the synthesis call's first token. With half the bench
+workload repeated, the bench's p95 lands on a cold query, so we expect about 3 s against the
+2.5 s gate, and the miss is documented on `/evals` rather than bought with a looser cap. Under
+the threshold — one page of text, or none — the model keeps its turn, to fetch or reformulate.
+Follow-ups keep theirs too, and deep sub-questions always do.
 
 Deep search sends its `plan` frame as the first paint, before any retrieval. The planner prompt
 is deliberately terse — fifteen-word questions, six-word reasons — because output tokens are the

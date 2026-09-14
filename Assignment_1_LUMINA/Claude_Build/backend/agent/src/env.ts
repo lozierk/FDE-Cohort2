@@ -4,6 +4,7 @@ import { MODEL_ID } from './config/model.js';
 import {
   CHUNK_CHARS,
   CHUNK_OVERLAP_CHARS,
+  DOCS_EXTRA_SEARCHES,
   EMBED_BATCH,
   MAX_UPLOAD_MB,
   RAG_CANDIDATES,
@@ -74,6 +75,7 @@ export const env = {
   maxUploadMb: num(process.env.MAX_UPLOAD_MB, MAX_UPLOAD_MB),
   chunkChars: num(process.env.CHUNK_CHARS, CHUNK_CHARS),
   chunkOverlapChars: num(process.env.CHUNK_OVERLAP_CHARS, CHUNK_OVERLAP_CHARS),
+  docsExtraSearches: num(process.env.DOCS_EXTRA_SEARCHES, DOCS_EXTRA_SEARCHES),
   embedBatch: num(process.env.EMBED_BATCH, EMBED_BATCH),
   ragTopK: num(process.env.RAG_TOP_K, RAG_TOP_K),
   ragCandidates: num(process.env.RAG_CANDIDATES, RAG_CANDIDATES),

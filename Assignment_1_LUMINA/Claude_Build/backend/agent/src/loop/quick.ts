@@ -11,6 +11,7 @@ import {
   type ToolName
 } from '@lumina/contract';
 import type { Logger } from 'pino';
+import { env } from '../env.js';
 import { scrub } from '../log.js';
 import {
   MAX_TOKENS,
@@ -91,6 +92,8 @@ export async function runQuickLoop(input: QuickLoopInput): Promise<QuickLoopResu
   let uncachedSearches = 0;
   let searchCount = 0;
   let searchHits = 0;
+  /** Set when the preflight already answered a docs-mode question; phase 1 is then skipped. */
+  let skipResearch = false;
   let embeddingTokens = 0;
 
   const allowed = toolsForMode(input.mode);
@@ -181,7 +184,7 @@ export async function runQuickLoop(input: QuickLoopInput): Promise<QuickLoopResu
      * user turn. Anything else and the model cannot tell a search that already happened from a
      * suggestion that one should — which it answers by searching again, for the whole prompt.
      */
-    const preflight = async (tool: 'web_search' | 'search_documents', reason: string): Promise<void> => {
+    const preflight = async (tool: 'web_search' | 'search_documents', reason: string): Promise<ToolResult0> => {
       const args = { query: input.query };
       const first = await runTool(tool, args, reason);
       const useId = `toolu_lumina_preflight_${tool}`;
@@ -198,6 +201,7 @@ export async function runQuickLoop(input: QuickLoopInput): Promise<QuickLoopResu
           { type: 'text', text: citableNumbersNotice(sources.toSources(input.query)) }
         ]
       });
+      return first;
     };
 
     if (input.mode === 'web' && history.length === 0 && allowedNames.has('web_search')) {
@@ -217,14 +221,27 @@ export async function runQuickLoop(input: QuickLoopInput): Promise<QuickLoopResu
       (input.mode === 'docs' || input.mode === 'auto') &&
       allowedNames.has('search_documents')
     ) {
-      await preflight(
+      const first = await preflight(
         'search_documents',
         input.mode === 'docs'
           ? 'mode=docs: search the Space first'
           : 'mode=auto: a Space is attached, search it first'
       );
+      /**
+       * docs mode, fresh thread, the Space answered: go straight to synthesis. The user asked for
+       * documents only and the loop has already run their exact question against them; a
+       * research turn here can only re-search. Measured 2026-09-14 over the 39 gold questions:
+       * every recall hit came from this preflight, and each extra model turn cost ~2 s of a
+       * 2.5 s TTFT budget (p95 was 9-12 s). Auto mode keeps its turn: the model still decides
+       * whether the web is needed as well. Empty retrieval keeps its turn too, so the model can
+       * reformulate once before the answer says nothing was found.
+       */
+      if (input.mode === 'docs' && first.ok && sources.toSources(input.query).length > 0) {
+        skipResearch = true;
+      }
     }
 
+    let docSearchesLeft = env.docsExtraSearches;
     const researchSystem = researchSystemPrompt({
       mode: input.mode,
       depth: 'quick',
@@ -236,7 +253,7 @@ export async function runQuickLoop(input: QuickLoopInput): Promise<QuickLoopResu
       input_schema: t.input_schema
     }));
 
-    for (;;) {
+    for (; !skipResearch; ) {
       if (capReached()) {
         terminated = 'cap';
         break;
@@ -292,6 +309,20 @@ export async function runQuickLoop(input: QuickLoopInput): Promise<QuickLoopResu
           });
           continue;
         }
+        if (use.name === 'search_documents' && docSearchesLeft <= 0) {
+          // The model may add DOCS_EXTRA_SEARCHES document searches on top of the preflight.
+          // Beyond that it is re-searching, and every turn is ~2 s of TTFT. Not traced: a
+          // refused call is not a retrieval step. Logged, and the model is told plainly.
+          input.log.info({ requestId: input.requestId }, 'search_documents budget for this request is spent');
+          results.push({
+            type: 'tool_result',
+            tool_use_id: use.id,
+            content: 'document search budget for this request is spent; answer from the passages you already have',
+            is_error: true
+          });
+          continue;
+        }
+        if (use.name === 'search_documents') docSearchesLeft -= 1;
         const r = await runTool(use.name, use.input, reason);
         results.push({
           type: 'tool_result',

@@ -33,6 +33,14 @@ export const RAG_VECTOR_NUM_CANDIDATES = 100;
  */
 export const RAG_RRF_K = 60;
 
+/**
+ * Document searches the MODEL may add on top of the preflight in one quick request. Measured
+ * 2026-09-14 on the 39-question gold set: every hit came from the preflight's own results, and
+ * each extra search the model asked for cost a ~2 s Haiku turn against a 2.5 s TTFT budget.
+ * Enforced in the loop, not asked for in the prompt.
+ */
+export const DOCS_EXTRA_SEARCHES = 1;
+
 /** Upper bound on the cosine-scan fallback's working set, and the size it warns above. */
 export const COSINE_SCAN_MAX_CHUNKS = 5000;
 export const COSINE_SCAN_WARN_CHUNKS = 2000;

@@ -141,11 +141,16 @@ const tracesOf = (frames: { event: string; data: unknown }[]) =>
 // ---------------------------------------------------------------- the tool through a real ask
 
 test('mode=docs searches the Space first and every doc source carries docId, locator and the chunk text', async () => {
-  useScript([{ text: 'ready' }, { text: 'The documents say what they say [1].' }]);
+  // ONE scripted turn: in docs mode on a fresh thread the preflight answered, so the loop goes
+  // straight to synthesis and never asks the model whether to search again.
+  useScript([{ text: 'The documents say what they say [1].' }]);
   const { frames } = await ask({ query: 'What is the default value of the k1 parameter?', mode: 'docs', spaceId });
 
   const traces = tracesOf(frames);
+  assert.equal(traces.length, 1, 'the preflight is the only step: no research turn after a hit in docs mode');
   assert.equal(traces[0]?.tool, 'search_documents', 'the preflight search is the first step in the trace');
+  const answer = frames.filter((f) => f.event === 'token').map((f) => (f.data as { text: string }).text).join('');
+  assert.match(answer, /say what they say \[1\]/, 'the single scripted turn was the synthesis');
   assert.equal(traces[0]?.ok, true);
   assert.match(traces[0]?.reason ?? '', /mode=docs/, 'the trace says why the step happened');
 

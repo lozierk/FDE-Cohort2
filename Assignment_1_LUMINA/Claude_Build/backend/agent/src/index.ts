@@ -40,13 +40,14 @@ import express from 'express';
 import { fork, type ChildProcess } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { HealthResponse, ROUTES } from '@lumina/contract';
+import { ROUTES } from '@lumina/contract';
 import { env, secrets } from './env.js';
-import { closeDb, mongoUriInUse, pingDb, vectorBackend } from './db.js';
+import { closeDb, mongoUriInUse, vectorBackend } from './db.js';
 import { log } from './log.js';
 import { makeProviders } from './providers/index.js';
 import { ensureIndexes } from './store/index.js';
 import { askRoutes } from './routes/ask.js';
+import { healthRoutes } from './routes/health.js';
 import { memoryRoutes } from './routes/memory.js';
 import { spaceRoutes } from './routes/spaces.js';
 import { statsRoutes } from './routes/stats.js';
@@ -71,20 +72,7 @@ mkdirSync(env.runsDir, { recursive: true });
 
 // ---------------------------------------------------------------- /health (implemented)
 
-app.get('/health', async (_req, res) => {
-  const dbStatus = await pingDb();
-  const body: HealthResponse = {
-    status: dbStatus === 'ok' ? 'ok' : 'degraded',
-    // The model and provider actually serving answers, not the env defaults: with
-    // LLM_PROVIDER=fake, saying "claude-haiku-4-5" would make every local number a lie.
-    model: providers.llm.model,
-    searchProvider: providers.search.name,
-    vectorStore: vectorBackend(),
-    db: dbStatus,
-    ai: { status: 'ok' }
-  };
-  res.status(dbStatus === 'ok' ? 200 : 503).json(body);
-});
+app.use(healthRoutes(providers));
 
 // ---------------------------------------------------------------- what is built (Week 1)
 

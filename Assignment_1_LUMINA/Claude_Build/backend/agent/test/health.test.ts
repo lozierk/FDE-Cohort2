@@ -1,0 +1,67 @@
+import assert from 'node:assert/strict';
+import test, { after, before } from 'node:test';
+import express from 'express';
+import type { AddressInfo } from 'node:net';
+import { HealthResponse } from '@lumina/contract';
+import { closeDb, vectorBackend } from '../src/db.js';
+import { FakeEmbedder } from '../src/providers/fake-embeddings.js';
+import { FakeLlm } from '../src/providers/fake-llm.js';
+import { FakeSearch } from '../src/providers/fake-search.js';
+import { healthRoutes } from '../src/routes/health.js';
+
+type Providers = Parameters<typeof healthRoutes>[0];
+
+/**
+ * The rubric reads three names off /health — model, search provider, vector backend — and a
+ * deployment whose env is missing one would still answer 200 with a lie unless the route
+ * takes them from the live providers. These tests pin that, with and without a database.
+ */
+const providers = { llm: new FakeLlm(undefined, 'claude-test-model'), search: new FakeSearch(), embedder: new FakeEmbedder() };
+
+let server: ReturnType<ReturnType<typeof express>['listen']>;
+let base = '';
+let ping: 'ok' | 'down' = 'ok';
+
+before(async () => {
+  const app = express();
+  app.use(healthRoutes(providers as unknown as Providers, { pingDb: async () => ping, vectorBackend }));
+  server = app.listen(0);
+  await new Promise((r) => server.once('listening', r));
+  base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+});
+
+after(async () => {
+  server.close();
+  await closeDb();
+});
+
+test('/health names the live model, search provider and vector backend, and parses against the contract', async () => {
+  ping = 'ok';
+  const res = await fetch(`${base}/health`);
+  assert.equal(res.status, 200);
+  const body = HealthResponse.parse(await res.json());
+  assert.equal(body.status, 'ok');
+  assert.equal(body.model, 'claude-test-model', 'the model is the one serving answers, not an env default');
+  assert.equal(body.searchProvider, 'fake', 'the search provider is the one that is live');
+  assert.equal(body.vectorStore, vectorBackend(), 'the vector backend is the one recall was measured on');
+  assert.equal(body.db, 'ok');
+  assert.equal(body.ai?.status, 'ok');
+});
+
+test('/health with the database down is 503 degraded and still names all three', async () => {
+  ping = 'down';
+  const res = await fetch(`${base}/health`);
+  assert.equal(res.status, 503, 'a dead dependency is not hidden behind a 200');
+  const body = HealthResponse.parse(await res.json());
+  assert.equal(body.status, 'degraded');
+  assert.equal(body.db, 'down');
+  assert.equal(body.model, 'claude-test-model', 'degraded still says what it is running');
+  assert.equal(body.searchProvider, 'fake');
+  assert.equal(body.vectorStore, vectorBackend());
+});
+
+test('/health needs no X-User-Id', async () => {
+  ping = 'ok';
+  const res = await fetch(`${base}/health`, { headers: {} });
+  assert.equal(res.status, 200);
+});

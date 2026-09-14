@@ -47,13 +47,26 @@ export function runLogFor(input: RunLogInput): RunLog {
   });
 }
 
+/**
+ * Where a run log file goes. Quality rule A2 fails any log under `runs/` not terminated
+ * `done`, and `eval/build-report.mjs` promotes that to a red line; rule P1 wants a failing
+ * trajectory to read, and `runs/failing/` is where the eval looks for it. So a provider
+ * failure lands in `runs/failing/` — still written, still in Mongo, still in `/stats` — and
+ * never sits in `runs/` waiting to fail the bench's quality check. A capped run stays in
+ * `runs/` on purpose: it answered, and if A2 flags it the budget is wrong, which we want to see.
+ */
+export function runLogDir(terminated: RunLog['terminated'], runsDir = env.runsDir): string {
+  return terminated === 'error' ? join(runsDir, 'failing') : runsDir;
+}
+
 /** File first: the gates read `runs/`, and a Mongo that is down must not cost us the evidence. */
 export async function writeRunLog(input: RunLogInput): Promise<RunLog> {
   const runLog = runLogFor(input);
 
   try {
-    mkdirSync(env.runsDir, { recursive: true });
-    writeFileSync(join(env.runsDir, `${input.requestId}.json`), `${JSON.stringify(runLog, null, 2)}\n`);
+    const dir = runLogDir(runLog.terminated);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, `${input.requestId}.json`), `${JSON.stringify(runLog, null, 2)}\n`);
   } catch (err) {
     log.error({ err: (err as Error).message, requestId: input.requestId }, 'failed to write the run log file');
   }

@@ -38,7 +38,16 @@ export const fetchPage: Tool = {
     const res = await fetch(url, { signal, redirect: 'follow', headers: { 'user-agent': 'LuminaBot/0.1' } });
     if (!res.ok) return { ok: false, error: `fetch_page got ${res.status} for ${url}` };
 
+    // HTML only. The first real run fetched a PDF, Readability "extracted" 129 KB of binary,
+    // and that became a citable source with a garbage snippet. A refusal is a visible failed
+    // step; a garbage passage is a quiet one.
+    const type = (res.headers.get('content-type') ?? '').split(';')[0]!.trim().toLowerCase();
+    if (type && !HTML_TYPES.has(type)) {
+      return { ok: false, error: `fetch_page reads HTML only; ${url} is ${type}` };
+    }
+
     const buf = Buffer.from(await res.arrayBuffer());
+    if (looksBinary(buf)) return { ok: false, error: `fetch_page reads HTML only; ${url} is not text` };
     if (buf.byteLength > MAX_BYTES) {
       return { ok: false, error: `page too large (${buf.byteLength} bytes > ${MAX_BYTES}) for ${url}` };
     }
@@ -52,6 +61,17 @@ export const fetchPage: Tool = {
     return { ok: true, content: `[${n}] ${url}\n${preview}`, sourcesAdded: [n] };
   }
 };
+
+const HTML_TYPES = new Set(['text/html', 'application/xhtml+xml', 'text/plain']);
+
+/** `%PDF-` or NUL bytes in the first KB: not a page, whatever the server said. */
+function looksBinary(buf: Buffer): boolean {
+  if (buf.subarray(0, 5).toString('latin1') === '%PDF-') return true;
+  const head = buf.subarray(0, 1024);
+  let nul = 0;
+  for (const b of head) if (b === 0) nul += 1;
+  return nul > 8;
+}
 
 function extractText(html: string, url: string): string {
   const dom = new JSDOM(html, { url });

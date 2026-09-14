@@ -1,20 +1,20 @@
 # STATE — LUMINA (Assignment 1), Claude and Codex builds
 
-As of Claude close (CLAUDE-066, 2026-09-14). Editor: unclaimed after explicit release (CLAUDE-066); claim before editing. Evidence IDs resolve in archive or messages.
+As of Claude close (CLAUDE-067, 2026-09-14 13:20 ET). Editor: unclaimed after explicit release (CLAUDE-067); claim before editing. Evidence IDs resolve in archive or messages.
 
-Both sessions closed. Latest Codex handoff: `Codex_Build/Resume_from_20260909_1333.md`; Claude: `Claude_Build/Resume_from_20260914_0826.md`. No active polling or automatic wake implied.
+Both sessions closed. Latest Codex handoff: `Codex_Build/Resume_from_20260909_1333.md`; Claude: `Claude_Build/Resume_from_20260914_1320.md`. No active polling or automatic wake implied.
 
 ## Registry
 - Program `fde-cohort2` · Project `lumina-a1` · Repo `lozierk/FDE-Cohort2` (private), path `Assignment_1_LUMINA/`; builds `Claude_Build/` (Claude) and `Codex_Build/` (Codex). Upstream starter pinned at `1442b05`, tree hash `c75bc544640cce93`.
 - Participants (identity ≠ model ≠ session): `CLAUDE` agent, harness Claude Code, model label Claude Fable 5.1 · `CODEX` agent, harness Codex CLI, model label GPT-6-based (unverified snapshot, CODEX-031) · `KURT` human principal; verified channel = Telegram reply ingested by `shared/check_kurt_replies.sh`; terminal statements are relayed by the agent that heard them.
 
 ## Where we are
-**Kurt's direction 2026-09-11 (CLAUDE-063):** Claude proceeds solo in `Claude_Build/`; Codex catches up later, scope Kurt's call; no wargame for now. `Claude_Build/DESIGN.md` v1.0 final (CLAUDE-064). Week 1 code landed and committed, end to end on fake providers (CLAUDE-065, `28c2b00`). **Next:** first real Haiku call once keys exist, then spaces/worker/RAG, deep search, deploy, eval. Deadline Fri 2026-09-18.
+**Kurt's direction 2026-09-11 (CLAUDE-063):** Claude proceeds solo in `Claude_Build/`; Codex catches up later, scope Kurt's call; no wargame for now. `Claude_Build/DESIGN.md` v1.0 final (CLAUDE-064). Week 1 code landed (`28c2b00`, CLAUDE-065). **2026-09-14 (CLAUDE-067):** all keys verified; Atlas `lumina-claude` (M0, us-east-1, db `lumina_claude`) live with all indexes queryable; first real Haiku asks done and tuned (5/5 grounded, $0.013–0.031, TTFT 3.7–7.7 s vs 2.5 s p95); four defects fixed. Kurt: stay on Haiku, A/B Sonnet 5 for synthesis next, OpenRouter/GLM/Kimi deferred to after eval. Peer submission reviewed (lessons in the resume). **Next:** Sonnet A/B → Kurt's TTFT decision → spaces/worker/RAG → deep → deploy → eval. Deadline Fri 2026-09-18.
 
 ## Gates and approvals (data, not prose)
 - `trial_ceiling_usd: 10` · scope: LUMINA endpoint-validation trial only, all-in · approved_by KURT (relayed, CLAUDE-035; confirmed CODEX-041) · full bench/eval budget: NOT set (Q-4).
 - `board_migration: approved` · KURT 2026-09-09 (relayed CLAUDE-054, CODEX-063) · `tool_pilot: not approved` · `database: not approved`.
-- Accounts: none provisioned. Kurt is opening OpenRouter ($20, two keys) and Tavily (CLAUDE-056); Atlas, OpenAI, Vercel, Fly to follow per D-9. Keys only in each build's ignored `.env` (CLAUDE-034/035).
+- Accounts (Claude_Build): Anthropic, Tavily, OpenAI keys and Atlas `lumina-claude` M0 provisioned 2026-09-14 (CLAUDE-067); OpenRouter deferred to post-eval; Vercel/Fly to follow (peer evidence: both services on Vercel is rubric-allowed). Keys only in each build's ignored `.env` (CLAUDE-034/035).
 - Protected starter folders never edited (`web/ packages/contract/ benchmark/ eval/ quality/ scripts/`); `/health` must name model, search, vector backend.
 - **Presence (CODEX-069, CLAUDE-060):** after a post expecting a reply, stay active and poll ≤ 60 s for ≤ 30 min; ingest Telegram while waiting; at timeout record pending IDs and end time. Claude's session watcher resumes it on new messages; nothing wakes an idle Codex turn. Kurt only via `ATTN: KURT` when both agree he is blocking.
 
@@ -39,9 +39,9 @@ Both sessions closed. Latest Codex handoff: `Codex_Build/Resume_from_20260909_13
 - Closed: Q-1..Q-3, Q-7..Q-11 (archive registers); Q-12 starter copy (CODEX-066); Q-14 migration review, commit cleared (CODEX-067)
 
 ## Pending work
-- Claude: Week 1 code done (loop, tools, cache, threads, memory, run log, stats, gateway). Next: real-provider validation, spaces/worker/RAG, deep search, deploy, eval. Spec: `Claude_Build/docs/week1-build-spec.md`.
+- Claude: Week 1 validated on real providers + Atlas. Next: Sonnet-synthesis A/B, TTFT decision (Kurt), spaces/worker/RAG, deep search, deploy, eval. Resume: `Claude_Build/Resume_from_20260914_1320.md`.
 - Codex: contract/grader review; DESIGN.md draft; red-team of Claude's DESIGN (Q-10 file names).
-- Kurt: Anthropic, Tavily, OpenAI keys + Atlas for Claude_Build (`Claude_Build/docs/kurt-setup-checklist.md`); Codex's scope; optional wargame later.
+- Kurt: TTFT loop-change decision; Sonnet stays or not after the A/B; Q-4 spend ceiling before the bench; Codex's scope; optional wargame later.
 
 ## Checkpoints
 See `board/MANIFEST.md`: archive SHA-256, highest legacy IDs (CLAUDE 054, CODEX 064), read checkpoints at cutover, receipts empty at cutover.

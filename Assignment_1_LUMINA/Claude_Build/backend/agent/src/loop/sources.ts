@@ -101,23 +101,32 @@ export class SourceRegistry {
    * check verifies; the model gets the surrounding page so the answer is synthesized from
    * fetched text, not from a one-sentence snippet. Same numbers, same candidates, same order.
    */
-  toPassages(query: string, maxChars = PASSAGE_MAX): Passage[] {
-    const out: Passage[] = [];
+  toPassages(query: string, maxChars = PASSAGE_MAX, limit = PASSAGE_LIMIT): Passage[] {
+    // Rank by query-term overlap and keep the top `limit`. With 17 unranked passages the
+    // first real run's synthesis overlooked the one that held the answer; the model can
+    // only cite what it is shown, so the citable-numbers line shrinks to match. Numbers
+    // are never reassigned, and the kept passages go back in number order.
+    const want = new Set(terms(query));
+    const scored: { p: Passage; score: number }[] = [];
     for (const c of this.order) {
       const snippet = chooseSnippet(c, query);
       if (!snippet || !c.text) continue;
-      out.push({
-        n: c.n,
-        title: c.title,
-        ...(c.url ? { url: c.url } : {}),
-        text: windowAround(c.text, snippet, maxChars)
-      });
+      const text = windowAround(c.text, snippet, maxChars);
+      let score = 0;
+      for (const t of new Set(terms(text))) if (want.has(t)) score += 1;
+      scored.push({ p: { n: c.n, title: c.title, ...(c.url ? { url: c.url } : {}), text }, score });
     }
-    return out;
+    scored.sort((a, b) => b.score - a.score || a.p.n - b.p.n);
+    return scored
+      .slice(0, limit)
+      .map((s) => s.p)
+      .sort((a, b) => a.n - b.n);
   }
 }
 
 export const PASSAGE_MAX = 1500;
+/** Passages synthesis reads. Enough for a quick answer to rest on several pages, few enough to be read. */
+export const PASSAGE_LIMIT = 8;
 
 export interface Passage {
   n: number;

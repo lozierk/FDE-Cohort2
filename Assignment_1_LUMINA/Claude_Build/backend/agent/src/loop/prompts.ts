@@ -15,7 +15,18 @@ export interface PromptContext {
   mode: AskMode;
   depth: Depth;
   memories?: string[];
+  /** Injectable for tests; defaults to now. */
+  now?: Date;
 }
+
+/**
+ * The model's training data ends long before today, and without being told the date it
+ * anchors "latest" and "most recent" to what it remembers (first real run: it searched for
+ * the December 2024 FOMC meeting in September 2026). One line fixes the whole class.
+ */
+const todayLine = (now?: Date): string =>
+  `Today's date is ${(now ?? new Date()).toISOString().slice(0, 10)}. "Latest", "recent", "current" and ` +
+  `"this year" are relative to that date, not to your training data.`;
 
 const memoryBlock = (memories?: string[]): string =>
   memories?.length
@@ -34,8 +45,12 @@ export function researchSystemPrompt(ctx: PromptContext): string {
   return [
     'You are LUMINA\'s research step. Your job in this step is to GATHER EVIDENCE, not to answer.',
     scope,
+    todayLine(ctx.now),
     '',
     'How to work:',
+    '- This is a QUICK search. Budget: two searches in total and two fetch_page calls at most,',
+    '  then say ready. A good answer in three seconds beats a complete one in twelve; if the',
+    '  first results already carry page text on the question, you are done.',
     '- Call a tool when you still need something. Say in one short sentence why, before the call.',
     '- Search results come back numbered. Those numbers are the citation numbers later, so pay',
     '  attention to which number holds which fact.',
@@ -55,6 +70,7 @@ export function synthesisSystemPrompt(ctx: PromptContext): string {
   return [
     'You are LUMINA. You answer the user\'s question from the numbered passages you are given,',
     'and from nothing else.',
+    todayLine(ctx.now),
     '',
     'Citation rules — these are checked, not trusted:',
     '- Cite with [n], using only the numbers in the passages below. A number that is not listed',

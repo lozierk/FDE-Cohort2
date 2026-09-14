@@ -24,9 +24,10 @@ export const env = {
   llmModel: process.env.LLM_MODEL ?? MODEL_ID,
 
   searchProvider: (process.env.SEARCH_PROVIDER ?? 'tavily') as 'tavily' | 'serpapi' | 'fake',
-  embeddingProvider: (process.env.EMBEDDING_PROVIDER ?? process.env.LLM_PROVIDER ?? 'openai') as
-    | 'openai'
-    | 'fake',
+  // Embeddings are OpenAI even when the LLM is Anthropic (D-9). The only inherited value is
+  // `fake`, so a keyless local run (LLM_PROVIDER=fake) needs no second switch.
+  embeddingProvider: (process.env.EMBEDDING_PROVIDER ??
+    (process.env.LLM_PROVIDER === 'fake' ? 'fake' : 'openai')) as 'openai' | 'fake',
   searchCacheTtlSeconds: num(process.env.SEARCH_CACHE_TTL_SECONDS, 21600),
 
   embeddingModel: process.env.EMBEDDING_MODEL ?? 'text-embedding-3-small',

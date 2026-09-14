@@ -398,6 +398,12 @@ async function callLlm(
       } else if (ev.type === 'tool_use') {
         out.toolUses.push({ type: 'tool_use', id: ev.id, name: ev.name, input: ev.input });
       } else if (ev.type === 'usage') {
+        // Per-call breakdown, so a cache that never engages is visible (Haiku 4.5 needs a
+        // 4,096-token prefix; ours is ~1,100, so expect cacheRead 0 — do not pad to fix it).
+        input.log.debug(
+          { requestId: input.requestId, input: ev.input, output: ev.output, cacheRead: ev.cacheRead, cacheWrite: ev.cacheWrite },
+          'llm usage'
+        );
         req.usage.input += ev.input;
         req.usage.output += ev.output;
         req.usage.cacheRead += ev.cacheRead;

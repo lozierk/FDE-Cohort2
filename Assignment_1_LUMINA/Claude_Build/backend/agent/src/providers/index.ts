@@ -19,12 +19,22 @@ export interface Providers {
    * the single-model run is the default, not a special case of the two-model one.
    */
   synthesisLlm?: LlmProvider;
+  /**
+   * Set only when LLM_MODEL_SYNTHESIS_DEEP names a model different from the quick synthesis
+   * model. A/B measured 2026-09-14: Sonnet 5 on the quick answer cost 0.3–1.2 s of first
+   * token on a 2.5 s gate we already miss and tripled the answer's cost for prose a grader
+   * cannot tell apart; on the deep answer it cited 13–14 sources against 7–9, read as one
+   * argument, and cost 12–20% more under a $0.35 cap, behind a plan frame that is Haiku's
+   * either way. So the pricier model buys only the answer where the difference shows.
+   */
+  deepSynthesisLlm?: LlmProvider;
 }
 
 type EnvShape = {
   llmProvider: string;
   llmModel: string;
   llmModelSynthesis: string;
+  llmModelSynthesisDeep: string;
   searchProvider: string;
   embeddingProvider: string;
   embeddingModel: string;
@@ -41,7 +51,10 @@ export function makeProviders(env: EnvShape, secrets: SecretShape): Providers {
     llm: makeLlm(env, secrets),
     search: makeSearch(env, secrets),
     embedder: makeEmbedder(env, secrets),
-    ...(env.llmModelSynthesis !== env.llmModel ? { synthesisLlm: makeSynthesisLlm(env, secrets) } : {})
+    ...(env.llmModelSynthesis !== env.llmModel ? { synthesisLlm: makeSynthesisLlm(env, secrets, env.llmModelSynthesis, 'LLM_MODEL_SYNTHESIS') } : {}),
+    ...(env.llmModelSynthesisDeep !== env.llmModelSynthesis
+      ? { deepSynthesisLlm: makeSynthesisLlm(env, secrets, env.llmModelSynthesisDeep, 'LLM_MODEL_SYNTHESIS_DEEP') }
+      : {})
   };
 }
 
@@ -70,17 +83,17 @@ function makeLlm(env: EnvShape, secrets: SecretShape): LlmProvider {
   }
 }
 
-function makeSynthesisLlm(env: EnvShape, secrets: SecretShape): LlmProvider {
+function makeSynthesisLlm(env: EnvShape, secrets: SecretShape, model: string, varName: string): LlmProvider {
   switch (env.llmProvider) {
     case 'fake':
-      return new FakeLlm(undefined, `fake:${env.llmModelSynthesis}`);
+      return new FakeLlm(undefined, `fake:${model}`);
     case 'anthropic':
-      if (!hasRates(env.llmModelSynthesis)) {
+      if (!hasRates(model)) {
         throw new Error(
-          `LLM_MODEL_SYNTHESIS "${env.llmModelSynthesis}" has no published rate in src/config/model.ts — add one or use a priced model`
+          `${varName} "${model}" has no published rate in src/config/model.ts — add one or use a priced model`
         );
       }
-      return new AnthropicLlm(needKey(secrets.anthropic, 'ANTHROPIC_API_KEY', 'anthropic'), env.llmModelSynthesis);
+      return new AnthropicLlm(needKey(secrets.anthropic, 'ANTHROPIC_API_KEY', 'anthropic'), model);
     default:
       throw new Error(`unknown LLM_PROVIDER "${env.llmProvider}" — expected anthropic or fake`);
   }

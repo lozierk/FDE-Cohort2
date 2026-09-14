@@ -155,7 +155,7 @@ export async function runDeepLoop(
 
   // The model that writes the answer, not the one that researched it — same reasoning as
   // quick.ts. Computed once: neither provider changes mid-request.
-  const synthesisLlm = input.providers.synthesisLlm ?? input.providers.llm;
+  const synthesisLlm = input.providers.deepSynthesisLlm ?? input.providers.synthesisLlm ?? input.providers.llm;
 
   const result = (over: Partial<DeepLoopResult>): DeepLoopResult => ({
     answerId: newId("ans"),

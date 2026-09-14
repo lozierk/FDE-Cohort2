@@ -20,10 +20,12 @@ export function healthRoutes(
     const dbStatus = await deps.pingDb();
     // HealthResponse.parse strips unknown keys, so a second `synthesisModel` field would
     // silently vanish on the wire — one string names both models instead.
-    const model =
-      providers.synthesisLlm && providers.synthesisLlm.model !== providers.llm.model
-        ? `${providers.llm.model}; synthesis: ${providers.synthesisLlm.model}`
-        : providers.llm.model;
+    const quick = providers.synthesisLlm?.model ?? providers.llm.model;
+    const deep = providers.deepSynthesisLlm?.model ?? quick;
+    const parts = [providers.llm.model];
+    if (quick !== providers.llm.model) parts.push(`synthesis: ${quick}`);
+    if (deep !== quick) parts.push(`deep synthesis: ${deep}`);
+    const model = parts.join('; ');
     const body: HealthResponse = {
       status: dbStatus === 'ok' ? 'ok' : 'degraded',
       model,

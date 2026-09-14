@@ -93,6 +93,24 @@ test('/health names the plain model when synthesisLlm is the same model', async 
   }
 });
 
+test('/health names the deep synthesis model too when it differs from the quick one', async () => {
+  ping = 'ok';
+  const p = providers as unknown as { synthesisLlm?: unknown; deepSynthesisLlm?: unknown };
+  p.deepSynthesisLlm = new FakeLlm(undefined, 'claude-test-deep');
+  try {
+    // Deep only: the quick answer is still on the base model, so it is not named twice.
+    let body = HealthResponse.parse(await (await fetch(`${base}/health`)).json());
+    assert.equal(body.model, 'claude-test-model; deep synthesis: claude-test-deep');
+    // All three differ: every model that can write an answer is on the wire.
+    p.synthesisLlm = new FakeLlm(undefined, 'claude-test-synthesis');
+    body = HealthResponse.parse(await (await fetch(`${base}/health`)).json());
+    assert.equal(body.model, 'claude-test-model; synthesis: claude-test-synthesis; deep synthesis: claude-test-deep');
+  } finally {
+    delete p.synthesisLlm;
+    delete p.deepSynthesisLlm;
+  }
+});
+
 test('/health names the plain model when there is no synthesisLlm', async () => {
   ping = 'ok';
   const res = await fetch(`${base}/health`);

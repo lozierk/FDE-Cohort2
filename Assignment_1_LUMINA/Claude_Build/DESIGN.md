@@ -1,10 +1,10 @@
 # DESIGN.md — LUMINA (Claude build)
 
-> v1.2, 2026-09-14. Drafted 2026-09-09 as v0.1; the two open trade-offs (LLM provider, worker
+> v1.3, 2026-09-14. Drafted 2026-09-09 as v0.1; the two open trade-offs (LLM provider, worker
 > placement) were decided by Kurt on 2026-09-11 as v1.0. v1.1 updates the design to match the
 > week 2 build: Spaces, ingest, hybrid retrieval, and deep search are now running. v1.2 applies
-> the docs-mode preflight rule to web mode (Kurt, 2026-09-14). The five graded headings below
-> are read by `eval/build-report.mjs`.
+> the docs-mode preflight rule to web mode (Kurt, 2026-09-14); v1.3 adds Sonnet 5 for the deep
+> answer only, trade-off 9. The five graded headings below are read by `eval/build-report.mjs`.
 
 ## Components
 
@@ -170,6 +170,18 @@ report; the quota collection is the gate, and the two can differ by refunded pla
    list can have gaps when a search result was never fetched. Kept on purpose: the research model
    already saw those numbers in tool results, and a stable number is worth more than a
    contiguous one.
+9. **Two models, split by where the difference shows: Haiku 4.5 for planning, research and the
+   quick answer; Sonnet 5 for the deep answer only** (`LLM_MODEL_SYNTHESIS_DEEP`; Kurt,
+   2026-09-14, from an A/B of twelve questions per arm). Sonnet on the quick answer added
+   0.3–1.2 s to first token on a 2.5 s gate already missed, and tripled the answer's cost
+   ($0.008–0.013 vs $0.003–0.004 warm) for prose a reader could not tell apart; on the docs
+   answers both arms hit all five gold facts. On the deep answer Sonnet cited 13–14 of the
+   sources against Haiku's 7–9, wrote sections that read as one argument, and put the citation
+   after the claim rather than before it, for 12–20% more cost ($0.080–0.093 vs $0.072–0.077,
+   cap $0.35) behind a plan frame that is Haiku's either way, so deep first paint does not move.
+   Each LLM call is priced against the model that made it, so a mixed run bills honestly, and
+   `/health` names every model that can write an answer. Given up: one cache namespace across
+   the run (caches are model-scoped; the deep synthesis prompt is unique per run anyway).
 
 ## Reading notes (not graded; kept here so a stranger sees what we read and judged)
 

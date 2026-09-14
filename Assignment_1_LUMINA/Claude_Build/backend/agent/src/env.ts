@@ -40,6 +40,9 @@ export const env = {
   // `llmModel` (Haiku decides tool calls fine — the plan and the tool loop are not what a
   // reader judges). Defaults to `llmModel` so an unset var is a no-op, not a second model.
   llmModelSynthesis: process.env.LLM_MODEL_SYNTHESIS ?? process.env.LLM_MODEL ?? MODEL_ID,
+  /** Deep synthesis only; falls back to the quick synthesis model, then LLM_MODEL. */
+  llmModelSynthesisDeep:
+    process.env.LLM_MODEL_SYNTHESIS_DEEP ?? process.env.LLM_MODEL_SYNTHESIS ?? process.env.LLM_MODEL ?? MODEL_ID,
 
   searchProvider: (process.env.SEARCH_PROVIDER ?? 'tavily') as 'tavily' | 'serpapi' | 'fake',
   // Embeddings are OpenAI even when the LLM is Anthropic (D-9). The only inherited value is

@@ -1,4 +1,4 @@
-import type { AskMode, Depth, Source } from '@lumina/contract';
+import type { AskMode, Depth, Source, SubQuestion } from '@lumina/contract';
 import type { Passage } from './sources.js';
 
 /**
@@ -51,6 +51,26 @@ export function researchSystemPrompt(ctx: PromptContext): string {
       'Prefer search_documents for anything these could answer; use the web only for what they do not cover.'
     : '';
 
+  /**
+   * The only line that differs between the gears, and it has to: told it is a quick search,
+   * a deep sub-question stops after its preflight, and deep then reads no more than quick —
+   * which is the one thing the bench's 2x source ratio is there to catch.
+   */
+  const budgetLines =
+    ctx.depth === 'deep'
+      ? [
+          '- This is ONE SUB-QUESTION of a deep search, researched alongside others. Budget: the',
+          '  first search has already run; spend what is left on ONE more search or on fetch_page',
+          '  for the results worth reading in full, then say ready.',
+          '- A result with no page text is not citable, so prefer fetching one good page over',
+          '  running another search that returns more previews.'
+        ]
+      : [
+          '- This is a QUICK search. Budget: two searches in total and two fetch_page calls at most,',
+          '  then say ready. A good answer in three seconds beats a complete one in twelve; if the',
+          '  first results already carry page text on the question, you are done.'
+        ];
+
   return [
     'You are LUMINA\'s research step. Your job in this step is to GATHER EVIDENCE, not to answer.',
     scope,
@@ -58,9 +78,7 @@ export function researchSystemPrompt(ctx: PromptContext): string {
     todayLine(ctx.now),
     '',
     'How to work:',
-    '- This is a QUICK search. Budget: two searches in total and two fetch_page calls at most,',
-    '  then say ready. A good answer in three seconds beats a complete one in twelve; if the',
-    '  first results already carry page text on the question, you are done.',
+    ...budgetLines,
     '- Call a tool when you still need something. Say in one short sentence why, before the call.',
     '- Search results come back numbered. Those numbers are the citation numbers later, so pay',
     '  attention to which number holds which fact.',
@@ -73,6 +91,61 @@ export function researchSystemPrompt(ctx: PromptContext): string {
     'Do not write the answer in this step. Someone else writes it, from what you gathered.',
     memoryBlock(ctx.memories)
   ].join('\n');
+}
+
+/**
+ * Deep phase 0. One forced `plan_research` call, and the only thing it produces is the plan.
+ *
+ * Short on purpose: this is deep search's first paint (`deep_plan_p95_ms` ≤ 4 000), so every
+ * line here is latency a user watches a spinner for. "Do not answer" is the load-bearing
+ * sentence — a model given a hard question will answer it from memory if you let it, and then
+ * the sub-questions are a decomposition of its own guess rather than of the question.
+ */
+export function plannerSystemPrompt(ctx: PromptContext & { min: number; max: number }): string {
+  return [
+    'You are LUMINA\'s planning step. You decide what to go and find out. You do not answer.',
+    todayLine(ctx.now),
+    '',
+    `Break the question into ${ctx.min}-${ctx.max} independent sub-questions a search engine can`,
+    'answer on its own, each with a short reason for asking it. Use the fewest that cover the',
+    `question: four is usual; ${ctx.max} only when the question really has that many parts.`,
+    '',
+    'A good plan covers:',
+    '- the distinct parts of the question, so nothing the user asked is left unresearched;',
+    '- the comparison axes, when the question compares things — one sub-question per axis,',
+    '  not one per thing being compared;',
+    '- the numbers someone would need to decide: prices, limits, latencies, sizes, dates.',
+    '',
+    'Each sub-question stands alone: it must make sense to someone who has not read the others,',
+    'so name the subject in full rather than writing "it" or "the second one". No two',
+    'sub-questions should return the same pages.',
+    // The user is watching a spinner until this call finishes, and output tokens are what it
+    // costs: 330-400 of them measured at 3.0-4.9 s against a 4 s budget. Haiku's throughput
+    // varies run to run, so the only reliable lever is fewer tokens. Terse is not a style
+    // preference here, it is the first-paint SLA.
+    'Be terse. Each question is at most fifteen words. Each reason is at most six words, and',
+    '`reason` on the call itself is at most eight. Every extra word is latency the user',
+    'watches a spinner for.',
+    'Do not answer the question. Call plan_research and nothing else.',
+    memoryBlock(ctx.memories)
+  ].join('\n');
+}
+
+/** The user turn for the planner: just the question, plus what the thread already covered. */
+export function plannerUserContent(input: {
+  query: string;
+  history: { role: 'user' | 'assistant'; content: string }[];
+}): string {
+  const parts: string[] = [];
+  if (input.history.length) {
+    parts.push(
+      'Earlier in this thread (oldest first):',
+      ...input.history.map((m) => `${m.role}: ${truncate(m.content, 400)}`),
+      ''
+    );
+  }
+  parts.push(`Question to plan research for: ${input.query}`);
+  return parts.join('\n');
 }
 
 /** Phase 2. One streaming call, no tools, and the citation rules are the whole prompt. */
@@ -93,7 +166,20 @@ export function synthesisSystemPrompt(ctx: PromptContext): string {
     '',
     'Style: answer the question first, in a sentence or two, then the detail. Plain prose. No',
     'preamble about what you are about to do.',
-    ctx.depth === 'deep' ? '\nStructure: a direct answer, a section per sub-question, then what is still unknown.' : '',
+    // Deep search that returns one long paragraph has wasted the decomposition it paid for,
+    // so the structure is spelled out rather than implied.
+    ctx.depth === 'deep'
+      ? [
+          '',
+          'Structure your answer exactly like this:',
+          '(1) a direct answer to the question in 2-4 sentences;',
+          '(2) one section per sub-question, in plan order, with the sub-question itself as the',
+          '    heading, answering only that sub-question from its passages;',
+          '(3) a final section headed "What is still unknown", naming what the passages did not',
+          '    settle. If everything was settled, say that in one line.',
+          'Markdown headings. Cite every factual sentence.'
+        ].join('\n')
+      : '',
     memoryBlock(ctx.memories)
   ].join('\n');
 }
@@ -128,6 +214,62 @@ export function synthesisUserContent(input: {
     parts.push(
       '',
       'No passages were retrieved for this question.',
+      'Say so plainly, say what you tried, and cite nothing.'
+    );
+  }
+
+  return parts.join('\n');
+}
+
+/**
+ * The user turn for deep synthesis: the question, the plan, then the passages GROUPED under
+ * the sub-question that found them.
+ *
+ * Grouping is what makes the section-per-sub-question structure writable. Handed one flat
+ * list of twenty passages the model has to re-derive which evidence belongs to which section,
+ * and the first real failure mode of a deep answer is a section that cites a page found for a
+ * different sub-question. The numbering is still one numbering: `[7]` is `[7]` in every group.
+ */
+export function deepSynthesisUserContent(input: {
+  query: string;
+  history: { role: 'user' | 'assistant'; content: string }[];
+  plan: SubQuestion[];
+  passagesBySub: { i: number; question: string; passages: Passage[] }[];
+}): string {
+  const parts: string[] = [`Question: ${input.query}`];
+
+  if (input.history.length) {
+    parts.push(
+      '',
+      'Earlier in this thread (oldest first):',
+      ...input.history.map((m) => `${m.role}: ${truncate(m.content, 600)}`)
+    );
+  }
+
+  parts.push('', 'The plan you researched, in order:');
+  for (const sq of input.plan) {
+    parts.push(`${sq.i}. ${sq.question}${sq.reason ? ` — ${sq.reason}` : ''}`);
+  }
+
+  const citable = input.passagesBySub.flatMap((g) => g.passages.map((p) => p.n)).sort((a, b) => a - b);
+
+  if (citable.length) {
+    parts.push('', 'Passages you may cite, grouped by the sub-question that found them:');
+    for (const group of input.passagesBySub) {
+      parts.push('', `Sub-question ${group.i}: ${group.question}`);
+      if (!group.passages.length) {
+        parts.push('  (nothing citable was retrieved for this sub-question)');
+        continue;
+      }
+      for (const p of group.passages) {
+        parts.push(`[${p.n}] ${p.title}${p.url ? ` — ${p.url}` : ''}\n${p.text}`, '');
+      }
+    }
+    parts.push(`Citable numbers: ${citable.join(', ')}. No others exist.`);
+  } else {
+    parts.push(
+      '',
+      'No passages were retrieved for any sub-question.',
       'Say so plainly, say what you tried, and cite nothing.'
     );
   }

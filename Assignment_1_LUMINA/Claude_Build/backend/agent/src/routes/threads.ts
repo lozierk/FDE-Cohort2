@@ -61,7 +61,19 @@ threadRoutes.get('/threads/:threadId', requireUser, async (req, res, next) => {
       ...(m.done ? { done: m.done } : {}),
       createdAt: new Date(m.createdAt).toISOString()
     }));
-    res.json(GetThreadResponse.parse({ threadId: thread._id, title: thread.title, messages }));
+    const body = GetThreadResponse.parse({ threadId: thread._id, title: thread.title, messages });
+    /**
+     * SPEC §7 shows `subQuestions` on an assistant message, but the contract's `ThreadMessage`
+     * does not declare it and zod strips what it does not declare. `packages/contract` is
+     * read-only, so the plan is validated as part of the stored `MessageDoc` and then put back
+     * on the wire here. Without it a deep answer loses its plan the moment the stream ends.
+     */
+    res.json({
+      ...body,
+      messages: body.messages.map((m, i) =>
+        rows[i]?.subQuestions?.length ? { ...m, subQuestions: rows[i]!.subQuestions } : m
+      )
+    });
   } catch (err) {
     next(err);
   }

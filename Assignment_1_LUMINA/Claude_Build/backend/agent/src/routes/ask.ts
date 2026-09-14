@@ -1,11 +1,13 @@
 import { Router, type Request, type Response } from 'express';
-import { AskBody, DoneEvent, StreamErrorEvent } from '@lumina/contract';
+import { AskBody, DoneEvent, StreamErrorEvent, type SubQuestion } from '@lumina/contract';
 import { env } from '../env.js';
 import { log } from '../log.js';
-import { doneEventFor, runQuickLoop } from '../loop/quick.js';
+import { runDeepLoop, type DeepLoopResult } from '../loop/deep.js';
+import { doneEventFor, runQuickLoop, type QuickLoopResult } from '../loop/quick.js';
 import type { Providers } from '../providers/index.js';
 import { writeRunLog } from '../runlog.js';
 import { SseStream } from '../sse.js';
+import { refundDeep, reserveDeep } from '../store/deep-quota.js';
 import { appendMessage, getSpace, getThread, listDocuments, listMessages } from '../store/index.js';
 import { requireUser, sendError } from './context.js';
 
@@ -30,13 +32,6 @@ export function askRoutes(providers: Providers): Router {
     }
     const { query, mode, depth, spaceId } = parsed.data;
 
-    // Depth is opted into, never drifted into — and this week the deep gear is not built, so
-    // it says so rather than quietly serving a quick answer under a deep label.
-    if (depth === 'deep') {
-      sendError(res, 501, 'deep search not built yet');
-      return;
-    }
-
     const thread = await getThread(userId, threadId);
     if (!thread) {
       sendError(res, 404, `no thread ${threadId}`);
@@ -58,6 +53,27 @@ export function askRoutes(providers: Providers): Router {
       space = { name: row.name, documents: docs.map((d) => d.title) };
     }
 
+    /**
+     * The spend gate. It comes after both 404s (thread and Space) so a request that can only
+     * fail cannot burn a credit — and before everything else, because the point of a cap is
+     * that it is cheaper than the thing it caps.
+     *
+     * Reserved, not counted: `$inc` and compare is what makes two concurrent asks on the last
+     * credit safe. It is given back only if the planner fails before any retrieval.
+     */
+    if (depth === 'deep') {
+      const reservation = await reserveDeep(userId, env.deepDailyCap);
+      if (!reservation.ok) {
+        // A 429 with no `resetsAt` tells a client to stop and gives it no way to know when to
+        // start again. The contract asks for both, and so does the bench.
+        sendError(res, 429, `deep search daily cap of ${env.deepDailyCap} reached`, {
+          resetsAt: reservation.resetsAt
+        });
+        return;
+      }
+    }
+
+
     const prior = await listMessages(threadId);
     const history = prior.map((m) => ({ role: m.role, content: m.content }));
     await appendMessage({ threadId, userId, role: 'user', content: query });
@@ -67,7 +83,7 @@ export function askRoutes(providers: Providers): Router {
     // A user who closed the tab should not keep a provider call alive on our bill.
     res.on('close', () => abort.abort());
 
-    const result = await runQuickLoop({
+    const common = {
       query,
       mode,
       userId,
@@ -77,16 +93,53 @@ export function askRoutes(providers: Providers): Router {
       ...(space ? { space } : {}),
       history,
       providers,
-      caps: { maxToolCalls: env.maxToolCalls, maxWallClockSec: env.maxWallClockSec },
       searchCacheTtlSeconds: env.searchCacheTtlSeconds,
-      emit: (event, data) => stream.send(event, data),
       log: log.child({ requestId, userId, threadId }),
       signal: abort.signal
-    });
+    };
+
+    // Two gears, two envelopes. Deep gets the wider one because it is doing more, not because
+    // it is allowed to sprawl — and it is the only path that can spend a daily credit.
+    let result: QuickLoopResult;
+    let plan: SubQuestion[] = [];
+    /** Only a planner failure gives the credit back; see the refund below. */
+    let refundable = false;
+
+    if (depth === 'deep') {
+      const deep: DeepLoopResult = await runDeepLoop({
+        ...common,
+        caps: { maxToolCalls: env.maxToolCallsDeep, maxWallClockSec: env.maxWallClockSecDeep },
+        deep: {
+          subQuestionsMin: env.deepSubQuestionsMin,
+          subQuestionsMax: env.deepSubQuestionsMax,
+          concurrency: env.deepConcurrency,
+          subToolCalls: env.deepSubToolCalls,
+          passagesPerSub: env.deepPassagesPerSub,
+          passageLimit: env.deepPassageLimit
+        },
+        emit: (event, data) => stream.send(event, data)
+      });
+      result = deep;
+      plan = deep.subQuestions;
+      refundable = deep.failedBeforeRetrieval === true;
+    } else {
+      result = await runQuickLoop({
+        ...common,
+        caps: { maxToolCalls: env.maxToolCalls, maxWallClockSec: env.maxWallClockSec },
+        emit: (event, data) => stream.send(event, data)
+      });
+    }
 
     if (result.terminated === 'error') {
       const message = result.error ?? 'provider failure';
       const status = 502;
+      /**
+       * The credit is refunded only when the run died in the PLANNER, before any retrieval:
+       * nothing was spent on the user's behalf, so charging them a fifth of their day for a
+       * provider hiccup would be theft. An error after the plan frame keeps the credit —
+       * searches and fetches really did happen.
+       */
+      if (refundable) await refundDeep(userId);
       // Before headers: a 502 with an ErrorBody, which is what a JSON client can act on.
       // After headers: an `error` frame, because the status line is already spent.
       if (stream.headersOut) {
@@ -95,7 +148,7 @@ export function askRoutes(providers: Providers): Router {
       } else {
         sendError(res, status, message);
       }
-      await writeRunLog({ requestId, userId, threadId, query, route: '/threads/:threadId/ask', status, depth: 'quick', result });
+      await writeRunLog({ requestId, userId, threadId, query, route: '/threads/:threadId/ask', status, depth, result });
       return;
     }
 
@@ -104,7 +157,7 @@ export function askRoutes(providers: Providers): Router {
     // /stats against the answers it just watched, and a stats call that lands between the
     // last frame and the last insert would otherwise undercount. A persistence failure is
     // logged loudly; it cannot change a status line that is already spent.
-    const done: DoneEvent = doneEventFor(result);
+    const done: DoneEvent = doneEventFor(result, depth, plan.length);
     stream.send('done', done);
     try {
       await appendMessage({
@@ -114,9 +167,10 @@ export function askRoutes(providers: Providers): Router {
         content: result.answer,
         answerId: result.answerId,
         sources: result.sources,
-        done
+        done,
+        ...(plan.length ? { subQuestions: plan } : {})
       });
-      await writeRunLog({ requestId, userId, threadId, query, route: '/threads/:threadId/ask', status: 200, depth: 'quick', result });
+      await writeRunLog({ requestId, userId, threadId, query, route: '/threads/:threadId/ask', status: 200, depth, result });
     } catch (err) {
       log.error({ err: (err as Error).message, requestId }, 'answer streamed but persistence failed');
     } finally {

@@ -56,7 +56,13 @@ export const fetchPage: Tool = {
     const text = extractText(html, url);
     if (!text.trim()) return { ok: false, error: `no readable text extracted from ${url}` };
 
-    const n = ctx.sources.add({ kind: 'web', title: titleOf(html) || url, url, text });
+    const n = ctx.sources.add({
+      kind: 'web',
+      title: titleOf(html) || url,
+      url,
+      text,
+      ...(ctx.subQuestion ? { subQuestion: ctx.subQuestion } : {})
+    });
     const preview = text.replace(/\s+/g, ' ').slice(0, 2000);
     return { ok: true, content: `[${n}] ${url}\n${preview}`, sourcesAdded: [n] };
   }

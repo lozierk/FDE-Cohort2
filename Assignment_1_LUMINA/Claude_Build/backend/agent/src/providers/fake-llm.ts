@@ -33,6 +33,9 @@ export class FakeLlm implements LlmProvider {
   }
 
   async *complete(req: LlmRequest): AsyncIterable<LlmEvent> {
+    // `toolChoice` is recorded (tests assert the planner forced `plan_research`) and then
+    // ignored: the script already says what this turn does, and a fake that "honoured" a
+    // forced tool would be inventing the tool input the loop is supposed to be tested on.
     this.calls.push(req);
     const next = this.script ? this.script[this.turn] : this.improvise(req);
     this.turn += 1;

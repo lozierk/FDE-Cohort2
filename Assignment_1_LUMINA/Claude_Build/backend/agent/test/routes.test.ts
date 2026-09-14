@@ -150,11 +150,19 @@ test('a provider that throws mid-stream ends with an error frame, not a plausibl
   assert.ok(!frames.some((f) => f.event === 'done'), 'no done event claims success');
 });
 
-test('deep is 501 this week, and the server never upgrades a request to deep on its own', async () => {
+// Deep search landed in week 2 part B, so the old "501 not built yet" assertion is gone. What
+// it was really protecting is this: the server answers at the depth it was asked for and
+// never upgrades a request on its own, because deep costs several times as much.
+test('the server never upgrades a request to deep on its own', async () => {
+  searchLru.clear();
+  useScript(undefined);
   const threadId = await newThread();
-  const res = await post(`/threads/${threadId}/ask`, { query: 'x', depth: 'deep' });
-  assert.equal(res.status, 501);
-  assert.match(ErrorBody.parse(await res.json()).error, /deep search not built yet/);
+  const res = await post(`/threads/${threadId}/ask`, { query: 'What is Tavily?', mode: 'web' });
+  const frames = parseSse(await res.text());
+  const done = frames.find((f) => f.event === 'done')!.data as { depth: string; subQuestions?: number };
+  assert.equal(done.depth, 'quick', 'no depth in the body means quick');
+  assert.ok(!frames.some((f) => f.event === 'plan'), 'a quick run streams no plan');
+  assert.ok(!frames.some((f) => f.event === 'trace' && (f.data as { tool: string }).tool === 'plan_research'));
 });
 
 test('save_memory writes a row GET /memory shows and DELETE /memory removes', async () => {

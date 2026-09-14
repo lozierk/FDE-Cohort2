@@ -37,6 +37,12 @@ export interface LlmRequest {
   system: string;
   messages: LlmMessage[];
   tools?: ToolDefinition[];
+  /**
+   * Force this one tool. The planner needs a plan, not a paragraph about planning, and
+   * asking for it in the prompt gets one four times in five. A forced tool call gets a
+   * schema-shaped object every time, which is the difference between parsing and hoping.
+   */
+  toolChoice?: { name: string };
   maxTokens: number;
   signal?: AbortSignal;
 }

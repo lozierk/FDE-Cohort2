@@ -21,6 +21,9 @@ export function sseHeaders(res: Response): void {
 
 /** Write one SSE frame and flush it. The blank line terminates the frame; without it the client waits. */
 export function sseSend(res: Response, event: string, data: unknown): void {
+  // A deep search fans out; a sub-question can still finish after the run has already
+  // ended the stream with an `error` frame. Writing then raises on the response, so drop it.
+  if (res.writableEnded || res.destroyed) return;
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   // @ts-expect-error `flush` exists when a compression middleware is present; harmless otherwise.
   if (typeof res.flush === 'function') res.flush();

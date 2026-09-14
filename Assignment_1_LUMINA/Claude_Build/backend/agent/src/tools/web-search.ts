@@ -49,7 +49,8 @@ export const webSearch: Tool = {
         title: r.title,
         url: r.url,
         searchSnippet: r.snippet,
-        ...(r.content ? { text: r.content } : {})
+        ...(r.content ? { text: r.content } : {}),
+        ...(ctx.subQuestion ? { subQuestion: ctx.subQuestion } : {})
       });
       added.push(n);
       const preview = (r.content ?? r.snippet ?? '').replace(/\s+/g, ' ').trim().slice(0, 300);

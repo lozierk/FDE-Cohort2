@@ -12,8 +12,18 @@ export interface ToolContext {
   threadId: string;
   requestId: string;
   spaceId?: string;
-  /** How deep into the loop we are. Reserved for Week 2's deep fan-out. */
+  /** How deep into the loop we are. 0 on a quick run, 1 inside a deep fan-out. */
   depth: number;
+  /**
+   * Which deep sub-question this tool call is serving, so every source it registers can be
+   * traced back to the question that went looking for it.
+   *
+   * It lives on the CONTEXT, not on the registry: the fan-out runs `DEEP_CONCURRENCY`
+   * sub-questions against ONE shared registry at the same time, so a "current sub-question"
+   * held anywhere shared would be whichever one happened to start last. Each sub-question
+   * gets its own ctx and they share everything else.
+   */
+  subQuestion?: number;
   mode: AskMode;
   providers: Providers;
   sources: SourceRegistry;

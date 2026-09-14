@@ -36,7 +36,8 @@ export class AnthropicLlm implements LlmProvider {
         max_tokens: req.maxTokens,
         system: [{ type: 'text', text: req.system, cache_control: { type: 'ephemeral' } }],
         messages: req.messages as unknown as Anthropic.MessageParam[],
-        ...(tools?.length ? { tools } : {})
+        ...(tools?.length ? { tools } : {}),
+        ...(req.toolChoice ? { tool_choice: { type: 'tool' as const, name: req.toolChoice.name } } : {})
       },
       { signal: req.signal }
     );

@@ -19,8 +19,15 @@ export const RATES_USD_PER_MTOK = {
 /** Per uncached provider search call (benchmark/sla.json cost_model.search_usd_per_call). */
 export const SEARCH_USD_PER_CALL = 0.008;
 
-/** max_tokens per call shape. Tool decisions are short; synthesis is the answer. */
-export const MAX_TOKENS = { toolDecision: 1024, synthesis: 4096 } as const;
+/**
+ * max_tokens per call shape. Tool decisions are short; synthesis is the answer.
+ *
+ * `plan` is a forced tool call holding at most six question/reason pairs. `deepSynthesis` is
+ * larger than `synthesis` because a deep answer is a section per sub-question plus what is
+ * still unknown, and a structured answer truncated at the fourth of six headings is worse
+ * than the quick answer it cost seven times as much to beat.
+ */
+export const MAX_TOKENS = { toolDecision: 1024, synthesis: 4096, plan: 1024, deepSynthesis: 6144 } as const;
 
 export interface TokenUsage {
   input: number;

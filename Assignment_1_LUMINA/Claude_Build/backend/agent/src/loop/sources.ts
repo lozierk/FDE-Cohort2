@@ -33,6 +33,12 @@ export interface Candidate {
   searchSnippet?: string;
   /** Fetched page text, or a chunk's own text. A candidate with none of this is not citable. */
   text?: string;
+  /**
+   * Which sub-question of a deep search first turned this up. Set on FIRST appearance and
+   * never overwritten, for the same reason `n` is not: a source that changes which
+   * sub-question it belongs to halfway through is untraceable. Absent on a quick run.
+   */
+  subQuestion?: number;
 }
 
 export const SNIPPET_MIN = 40;
@@ -61,6 +67,8 @@ export class SourceRegistry {
     ord?: number;
     searchSnippet?: string;
     text?: string;
+    /** The deep sub-question on whose behalf this tool ran. Quick runs pass nothing. */
+    subQuestion?: number;
   }): number {
     // A web page is identified by its url. A document source is identified by document and
     // PLACE in that document (page, heading, or line): every chunk retrieved from page 1 of
@@ -84,6 +92,8 @@ export class SourceRegistry {
         existing.text = input.text;
       }
       if (!existing.searchSnippet && input.searchSnippet) existing.searchSnippet = input.searchSnippet;
+      // Deliberately NOT updated: two sub-questions finding the same page is the dedupe
+      // working, and the answer should credit whichever one went looking for it first.
       return existing.n;
     }
     const candidate: Candidate = {
@@ -95,7 +105,8 @@ export class SourceRegistry {
       ...(input.locator ? { locator: input.locator } : {}),
       ...(input.kind === 'doc' && input.text ? { pieces: [{ ord: input.ord ?? 0, text: input.text }] } : {}),
       ...(input.searchSnippet ? { searchSnippet: input.searchSnippet } : {}),
-      ...(input.text ? { text: input.text } : {})
+      ...(input.text ? { text: input.text } : {}),
+      ...(input.subQuestion ? { subQuestion: input.subQuestion } : {})
     };
     this.byKey.set(key, candidate);
     this.order.push(candidate);
@@ -134,7 +145,10 @@ export class SourceRegistry {
         ...(c.docId ? { docId: c.docId } : {}),
         // The locator is the whole value of a document citation. Without it a reader is told
         // "it is somewhere in this 40-page PDF", which is not a citation.
-        ...(c.locator ? { locator: c.locator } : {})
+        ...(c.locator ? { locator: c.locator } : {}),
+        // Deep merges several result sets into one numbering; without this a reader cannot
+        // tell why a source is in the list. The bench checks every source carries it.
+        ...(c.subQuestion ? { subQuestion: c.subQuestion } : {})
       });
     }
     return out;
@@ -147,13 +161,26 @@ export class SourceRegistry {
    * fetched text, not from a one-sentence snippet. Same numbers, same candidates, same order.
    */
   toPassages(query: string, maxChars = PASSAGE_MAX, limit = PASSAGE_LIMIT): Passage[] {
+    return this.rank(this.order, query, maxChars, limit);
+  }
+
+  /**
+   * The same ranking, over ONE sub-question's own candidates. Deep synthesis gives each
+   * sub-question a fixed share of what the model reads, so a sub-question that found three
+   * good pages is not crowded out by one that found fifteen mediocre ones.
+   */
+  toPassagesFor(subQuestion: number, query: string, limit: number, maxChars = PASSAGE_MAX): Passage[] {
+    return this.rank(this.order.filter((c) => c.subQuestion === subQuestion), query, maxChars, limit);
+  }
+
+  private rank(candidates: readonly Candidate[], query: string, maxChars: number, limit: number): Passage[] {
     // Rank by query-term overlap and keep the top `limit`. With 17 unranked passages the
     // first real run's synthesis overlooked the one that held the answer; the model can
     // only cite what it is shown, so the citable-numbers line shrinks to match. Numbers
     // are never reassigned, and the kept passages go back in number order.
     const want = new Set(terms(query));
     const scored: { p: Passage; score: number }[] = [];
-    for (const c of this.order) {
+    for (const c of candidates) {
       const snippet = chooseSnippet(c, query);
       if (!snippet || !c.text) continue;
       // A doc passage is the whole chunk, and its title carries the locator: the chunk is
@@ -167,6 +194,7 @@ export class SourceRegistry {
           n: c.n,
           title: c.kind === 'doc' ? passageTitle(c) : c.title,
           ...(c.url ? { url: c.url } : {}),
+          ...(c.subQuestion ? { subQuestion: c.subQuestion } : {}),
           text
         },
         score
@@ -188,6 +216,8 @@ export interface Passage {
   n: number;
   title: string;
   url?: string;
+  /** Which deep sub-question found it. Absent on a quick run. */
+  subQuestion?: number;
   /** Verbatim fetched text, up to PASSAGE_MAX chars, containing the source's snippet. */
   text: string;
 }

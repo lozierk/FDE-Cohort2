@@ -78,7 +78,8 @@ export const searchDocuments: Tool = {
         docId: chunk.docId,
         locator: chunk.locator,
         ord: chunk.ord,
-        text: chunk.text
+        text: chunk.text,
+        ...(ctx.subQuestion ? { subQuestion: ctx.subQuestion } : {})
       });
       added.push(n);
       const where = passageTitle({ n, kind: 'doc', title, locator: chunk.locator });

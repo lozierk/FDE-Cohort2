@@ -22,6 +22,11 @@ export interface RunLogInput {
   route: string;
   status: number;
   depth: Depth;
+  /**
+   * A deep run's result too: `DeepLoopResult` extends this with `subQuestions`, and the run
+   * log has no field for a plan. `depth` is what tells a legitimately expensive deep run
+   * apart from a quick run that has quietly run away with the budget.
+   */
   result: QuickLoopResult;
 }
 

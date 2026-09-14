@@ -13,9 +13,11 @@ import {
   type SpaceDoc,
   type Source,
   type ThreadDoc,
-  type DoneEvent
+  type DoneEvent,
+  type SubQuestion
 } from '@lumina/contract';
 import { db } from '../db.js';
+import { ensureDeepQuotaIndex } from './deep-quota.js';
 import { ensureGridFsIndexes } from './gridfs.js';
 import { ensureSearchCacheIndex } from '../cache/search-cache.js';
 import { log } from '../log.js';
@@ -57,6 +59,9 @@ export async function ensureIndexes(): Promise<void> {
       await (await jobs()).createIndex({ status: 1, claimedAt: 1 });
       await ensureGridFsIndexes();
       await ensureSearchCacheIndex();
+      // TTL on the deep-search quota rows: a spend gate that accumulates a row per user per
+      // day forever is a gate with a storage leak attached.
+      await ensureDeepQuotaIndex();
       log.info('indexes ensured');
     })();
   }
@@ -96,6 +101,8 @@ export async function appendMessage(input: {
   answerId?: string;
   sources?: Source[];
   done?: DoneEvent;
+  /** The plan a deep answer ran, so the answer stays explainable after the stream is gone. */
+  subQuestions?: SubQuestion[];
 }): Promise<MessageDoc> {
   const doc: MessageDoc = {
     _id: randomUUID(),
@@ -106,6 +113,7 @@ export async function appendMessage(input: {
     sources: input.sources ?? [],
     ...(input.answerId ? { answerId: input.answerId } : {}),
     ...(input.done ? { done: input.done } : {}),
+    ...(input.subQuestions?.length ? { subQuestions: input.subQuestions } : {}),
     createdAt: new Date()
   };
   await (await messages()).insertOne(doc);

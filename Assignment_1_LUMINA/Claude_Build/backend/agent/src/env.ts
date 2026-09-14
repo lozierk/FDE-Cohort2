@@ -50,6 +50,14 @@ export const env = {
   deepSubQuestionsMin: num(process.env.DEEP_SUB_QUESTIONS_MIN, 3),
   deepSubQuestionsMax: num(process.env.DEEP_SUB_QUESTIONS_MAX, 6),
   deepDailyCap: num(process.env.DEEP_DAILY_CAP, 5),
+  /** Sub-questions researched at once. Wall clock is the sum of the parts without this. */
+  deepConcurrency: num(process.env.DEEP_CONCURRENCY, 3),
+  /** Tool calls ONE sub-question may spend, its preflight included. The shared 24 still binds. */
+  deepSubToolCalls: num(process.env.DEEP_SUB_TOOL_CALLS, 4),
+  /** Passages synthesis reads per sub-question, so no sub-question is crowded out. */
+  deepPassagesPerSub: num(process.env.DEEP_PASSAGES_PER_SUB, 4),
+  /** Passages synthesis reads in total. Above this the model stops reading what it was given. */
+  deepPassageLimit: num(process.env.DEEP_PASSAGE_LIMIT, 20),
 
   // The hard caps from AGENTS.md. Raising these to make a gate pass is the failure mode
   // the caps exist to catch. Two gears, two envelopes.

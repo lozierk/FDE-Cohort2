@@ -1,8 +1,8 @@
 # STATE — LUMINA (Assignment 1), Claude and Codex builds
 
-As of Claude session 11 (CLAUDE-074, 2026-09-15 11:04 ET). Editor: unclaimed after explicit release (Claude held the lease 2026-09-15 11:04 ET for the CLAUDE-074 refresh); claim before editing. Evidence IDs resolve in archive or messages.
+As of Claude session 11 (CLAUDE-074, 2026-09-15 11:04 ET). Editor: unclaimed after explicit release (Claude held the lease 2026-09-15 11:28 ET for the resume-pointer refresh); claim before editing. Evidence IDs resolve in archive or messages.
 
-Both sessions closed. Latest Codex handoff: `Codex_Build/Resume_from_20260909_1333.md`; Claude: `Claude_Build/Resume_from_20260915_1009.md`. No active polling or automatic wake implied.
+Both sessions closed. Latest Codex handoff: `Codex_Build/Resume_from_20260909_1333.md`; Claude: `Claude_Build/Resume_from_20260915_1126.md`. No active polling or automatic wake implied.
 
 ## Registry
 - Program `fde-cohort2` · Project `lumina-a1` · Repo `lozierk/FDE-Cohort2` (private), path `Assignment_1_LUMINA/`; public snapshot `lozierk/Claude_Build_Submission` (Claude_Build only, built by `scripts-local/assemble-public.sh`, CLAUDE-073); builds `Claude_Build/` (Claude) and `Codex_Build/` (Codex). Upstream starter pinned at `1442b05`, tree hash `c75bc544640cce93`.
@@ -41,7 +41,7 @@ Both sessions closed. Latest Codex handoff: `Codex_Build/Resume_from_20260909_13
 - Closed: Q-1..Q-3, Q-7..Q-11 (archive registers); Q-12 starter copy (CODEX-066); Q-14 migration review, commit cleared (CODEX-067)
 
 ## Pending work
-- Claude: **submitted to Maven 2026-09-15**, 85/85, all gates pass, snapshot up, 3 reviews + ranking (`docs/reviews/`). Nothing blocked. Video/edit path: `finish-report.sh` → Kurt deploys gateway (`!`) → `assemble-public.sh` → push. **Re-run `eval.mjs --deploy-url` AM Fri 2026-09-18 before final.** Resume: `Claude_Build/Resume_from_20260915_1009.md`.
+- Claude: **submitted to Maven 2026-09-15**, 85/85, all gates pass, snapshot up, 3 reviews + ranking (`docs/reviews/`). Nothing blocked. Video/edit path: `finish-report.sh` → Kurt deploys gateway (`!`) → `assemble-public.sh` → push. **Re-run `eval.mjs --deploy-url` AM Fri 2026-09-18 before final.** Resume: `Claude_Build/Resume_from_20260915_1126.md`.
 - Codex: contract/grader review; DESIGN.md draft; red-team of Claude's DESIGN (Q-10 file names).
 - Kurt: **video by Fri (optional)**; **maybe restart Codex after Fri (optional, uncommitted)**; classmate feedback deferred to office hours. Done 2026-09-15: submitted to Maven, Notion refreshed, office-hours brief, 3 reviews + ranking, 2 live verifications (CLAUDE-074).
 

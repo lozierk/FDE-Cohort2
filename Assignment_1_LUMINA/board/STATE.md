@@ -1,19 +1,19 @@
 # STATE — LUMINA (Assignment 1), Claude and Codex builds
 
-As of Claude close (CLAUDE-070, 2026-09-14 18:12 ET). Editor: unclaimed after explicit release (CLAUDE-070; Claude held the lease 18:14–18:14 ET for this refresh); claim before editing. Evidence IDs resolve in archive or messages.
+As of Claude close (CLAUDE-071, 2026-09-14 21:25 ET). Editor: unclaimed after explicit release (CLAUDE-071; Claude held the lease 21:22–21:23 ET for this refresh); claim before editing. Evidence IDs resolve in archive or messages.
 
-Both sessions closed. Latest Codex handoff: `Codex_Build/Resume_from_20260909_1333.md`; Claude: `Claude_Build/Resume_from_20260914_1812.md`. No active polling or automatic wake implied.
+Both sessions closed. Latest Codex handoff: `Codex_Build/Resume_from_20260909_1333.md`; Claude: `Claude_Build/Resume_from_20260914_2119.md`. No active polling or automatic wake implied.
 
 ## Registry
 - Program `fde-cohort2` · Project `lumina-a1` · Repo `lozierk/FDE-Cohort2` (private), path `Assignment_1_LUMINA/`; builds `Claude_Build/` (Claude) and `Codex_Build/` (Codex). Upstream starter pinned at `1442b05`, tree hash `c75bc544640cce93`.
 - Participants (identity ≠ model ≠ session): `CLAUDE` agent, harness Claude Code, model label Claude Fable 5.1 · `CODEX` agent, harness Codex CLI, model label GPT-6-based (unverified snapshot, CODEX-031) · `KURT` human principal; verified channel = Telegram reply ingested by `shared/check_kurt_replies.sh`; terminal statements are relayed by the agent that heard them.
 
 ## Where we are
-**Kurt's direction 2026-09-11 (CLAUDE-063):** Claude proceeds solo in `Claude_Build/`; Codex catches up later, scope Kurt's call; no wargame for now. `Claude_Build/DESIGN.md` v1.0 final (CLAUDE-064). Week 1 code landed (`28c2b00`, CLAUDE-065). **2026-09-14 (CLAUDE-067):** all keys verified; Atlas `lumina-claude` (M0, us-east-1, db `lumina_claude`) live with all indexes queryable; first real Haiku asks done and tuned (5/5 grounded, $0.013–0.031, TTFT 3.7–7.7 s vs 2.5 s p95); four defects fixed. Kurt: stay on Haiku, A/B Sonnet 5 for synthesis next, OpenRouter/GLM/Kimi deferred to after eval. Peer submission reviewed (lessons in the resume). **2026-09-14 15:27 (CLAUDE-068):** Week 2 part A (spaces, child-process worker, hybrid RAG, doc citations) built, reviewed, measured, committed: recall@5 39/39, docs TTFT p95 1.62 s, $0.002/answer. Rate limit 300/min for the bench (Kurt). Agent must deploy on Fly. **17:01 (CLAUDE-069):** part B deep search committed (`ae3e72c`): plan 2.4–3.5 s, sources 2.7–7.0× quick, cost ≤ $0.14, 429+`resetsAt` on the 6th ask; DESIGN v1.1. **18:12 (CLAUDE-070):** web mode answers from the preflight search (cold TTFT 4.7–13 s → 1.8–3.6 s; Tavily floor 1.0–2.3 s, bench p95 ≈ 3 s vs 2.5 s gate documented); tests agent 115 / gateway 11, error runs to `runs/failing/` by construction; **model split (Kurt): Haiku 4.5 everywhere except Sonnet 5 for the deep answer** (`LLM_MODEL_SYNTHESIS_DEEP`, DESIGN v1.3 trade-off 9, per-call per-model cost); **Q-4 ceiling set**. **Next:** local full bench → deploy (agent on Fly; gateway target Kurt's call) → bench vs deployed → eval → `/evals`. Deadline Fri 2026-09-18.
+**Kurt's direction 2026-09-11 (CLAUDE-063):** Claude proceeds solo in `Claude_Build/`; Codex catches up later, scope Kurt's call; no wargame for now. `Claude_Build/DESIGN.md` v1.0 final (CLAUDE-064). Week 1 code landed (`28c2b00`, CLAUDE-065). **2026-09-14 (CLAUDE-067–070):** keys verified, Atlas `lumina-claude` live; Week 2 parts A and B built and measured (recall@5 39/39, docs TTFT p95 1.62 s, deep plan 2.4–3.5 s, 429+`resetsAt` on the 6th ask); web mode answers from the preflight search; error runs to `runs/failing/`; rate limit 300/min for the bench; **model split (Kurt): Haiku 4.5 everywhere except Sonnet 5 for the deep answer** (DESIGN v1.3 trade-off 9); OpenRouter/GLM/Kimi deferred to after eval. **≈ 21:25 (CLAUDE-071):** four local runs of the course bench found four defects, all fixed (`e8e0ed2`): one-thread workload vs fresh-thread fast path (standalone-question check), memory instruction searched instead of saved (memory requests keep the turn; recall is the loop's first step), Tavily markdown snippets vs the grader's HTML (cleaned at provider and tool; video/login hosts uncitable), gateway 204→502 on DELETE /memory. Bench 4: 22/22 gates, 15/16 SLA, grounding 0.981, memory ✓; **TTFT p95 4.1 s vs 2.5 s is the one documented miss**. Tests 125/12, DESIGN v1.4. Deploy decided and prepared (`Claude_Build/DEPLOY.md`, `7beeafb`): agent private on Fly, gateway public on Fly, UI static on Vercel = submission URL (Q-5). Write-up drafted (`docs/WRITEUP.md` + private Notion). **Next:** Kurt's `fly auth login` + `vercel login` → deploy → bench vs deployed → export runs → eval → `/evals`. Deadline Fri 2026-09-18.
 
 ## Gates and approvals (data, not prose)
 - `trial_ceiling_usd: 10` · scope: LUMINA endpoint-validation trial only, all-in · approved_by KURT (relayed, CLAUDE-035; confirmed CODEX-041).
-- `bench_eval_ceiling_usd: 10` · scope: Claude_Build bench + eval cycle, all providers in · approved_by KURT 2026-09-14 (terminal, relayed, CLAUDE-070) · expected ≈ $3.60; one full bench ≈ $1.05.
+- `bench_eval_ceiling_usd: 15` · scope: Claude_Build bench + eval cycle, all providers in · approved_by KURT 2026-09-14 21:05 ET (terminal, relayed, CLAUDE-071; raised from 10, CLAUDE-070) · spent ≈ $4.60 on four local runs; one full bench ≈ $1.10.
 - `board_migration: approved` · KURT 2026-09-09 (relayed CLAUDE-054, CODEX-063) · `tool_pilot: not approved` · `database: not approved`.
 - Accounts (Claude_Build): Anthropic, Tavily, OpenAI keys and Atlas `lumina-claude` M0 provisioned 2026-09-14 (CLAUDE-067); OpenRouter deferred to post-eval; Vercel/Fly to follow (peer evidence: both services on Vercel is rubric-allowed). Keys only in each build's ignored `.env` (CLAUDE-034/035).
 - Protected starter folders never edited (`web/ packages/contract/ benchmark/ eval/ quality/ scripts/`); `/health` must name model, search, vector backend.
@@ -32,7 +32,7 @@ Both sessions closed. Latest Codex handoff: `Codex_Build/Resume_from_20260909_13
 - **program-scope candidates, not promoted:** D-11 tripwire scan, rule 8, write protocol. Promotion needs Kurt and both agents on the board.
 
 ## Open items
-- Q-4 full-cycle spend ceiling: SET at $10 for Claude_Build (CLAUDE-070); Codex_Build unbudgeted until Kurt says otherwise
+- Q-4 full-cycle spend ceiling: SET at $15 for Claude_Build (raised from $10, CLAUDE-071); Codex_Build unbudgeted until Kurt says otherwise
 - Q-5 submitted URL / build switch: DEFERRED to UX phase (CLAUDE-035)
 - Q-6 Codex eval flow: CONFIRMED against the real starter (CODEX-070, `Codex_Build/EVAL_FLOW_REVIEW.md`; flags exporter failing-run handling and placeholder prices)
 - Q-13 DESIGN.md drafts: Claude CLOSED (v1.0, CLAUDE-064); Codex draft still open (CLAUDE-037, CODEX-044)
@@ -40,9 +40,9 @@ Both sessions closed. Latest Codex handoff: `Codex_Build/Resume_from_20260909_13
 - Closed: Q-1..Q-3, Q-7..Q-11 (archive registers); Q-12 starter copy (CODEX-066); Q-14 migration review, commit cleared (CODEX-067)
 
 ## Pending work
-- Claude: Week 2 complete; model split shipped; Q-4 set. Next: local full bench → deploy → bench vs deployed → eval. Resume: `Claude_Build/Resume_from_20260914_1812.md`.
+- Claude: local bench green but for the documented TTFT p95; deploy prepared and blocked on logins. Next: deploy per `DEPLOY.md` → bench vs deployed → eval → `/evals` → write-up final. Resume: `Claude_Build/Resume_from_20260914_2119.md`.
 - Codex: contract/grader review; DESIGN.md draft; red-team of Claude's DESIGN (Q-10 file names).
-- Kurt: gateway deploy target (Fly vs Vercel) and Q-5 submitted URL; run-log volume on the deployed agent; Codex's scope.
+- Kurt: `fly auth login` and `vercel login` (tomorrow morning); run the `fly secrets import` line; which repo link to submit (repo is private); the video; Codex's scope (Claude recommends: paused through Friday). Decided: gateway on Fly; Q-5 = the Vercel UI URL; no run-log volume.
 
 ## Checkpoints
 See `board/MANIFEST.md`: archive SHA-256, highest legacy IDs (CLAUDE 054, CODEX 064), read checkpoints at cutover, receipts empty at cutover.

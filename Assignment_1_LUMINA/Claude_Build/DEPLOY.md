@@ -31,6 +31,9 @@ fly deploy -c fly.agent.toml --remote-only
 fly logs -a lumina-claude-agent      # expect "agent up …" then "jobs worker child started"
 ```
 
+Both Dockerfiles copy `tsconfig.base.json` with the root `package.json`: every package's
+`tsconfig.json` extends it, and the first remote build (2026-09-15) failed with TS5083 without it.
+
 Expected secrets on the agent: `ANTHROPIC_API_KEY`, `TAVILY_API_KEY`, `OPENAI_API_KEY`,
 `MONGODB_URI`, `MONGODB_DB=lumina_claude`, `LLM_MODEL_SYNTHESIS_DEEP=claude-sonnet-5`.
 Extra keys from `.env` (e.g. `RATE_LIMIT_PER_MINUTE`) are harmless on the agent.
@@ -43,7 +46,7 @@ as `http://lumina-claude-agent.internal:8000` from inside the org.
 ```
 fly apps create lumina-claude-gateway --org personal
 fly deploy -c fly.gateway.toml --remote-only
-curl -s https://lumina-claude-gateway.fly.dev/health      # model, search, vector backend, db ok
+curl -s https://lumina-claude-gateway.fly.dev/health      # model, search, vector backend, db ok (every other route needs X-User-Id)
 ```
 
 `AGENT_URL` and `RATE_LIMIT_PER_MINUTE=300` are in `fly.gateway.toml`. `CORS_ORIGINS` defaults
@@ -62,23 +65,54 @@ scratch folder so Vercel's `.vercel/` link file never lands inside the protected
 npm run build -w @lumina/contract
 VITE_API_URL=https://lumina-claude-gateway.fly.dev npm run build -w @lumina/web
 rm -rf deploy/web && mkdir -p deploy/web && cp -R web/dist/. deploy/web/ && cp web/vercel.json deploy/web/
-cd deploy/web && vercel --prod --yes --name lumina-claude      # Kurt on first run (project link)
+node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync("deploy/web/vercel.json","utf8"));delete j._comment;fs.writeFileSync("deploy/web/vercel.json",JSON.stringify(j,null,2)+"\n")'
+node -e 'const fs=require("fs");const b=fs.readFileSync("deploy/favicon-kit/android-chrome-192x192.png").toString("base64");fs.writeFileSync("deploy/web/favicon.svg",`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 192 192" width="192" height="192"><image width="192" height="192" xlink:href="data:image/png;base64,${b}"/></svg>`)'
+cp deploy/favicon-kit/favicon.ico deploy/web/
+cd deploy/web && vercel link --yes --project lumina-claude && vercel --prod --yes
 ```
 
+Favicon (Kurt, 2026-09-15): the provided `index.html` links `/favicon.svg` by name and type and
+cannot be edited, so Kurt's PNG kit (`deploy/favicon-kit/`, committed) is wrapped as an SVG
+`<image>` and written over the staged copy only; `web/public/favicon.svg` is untouched.
+`favicon.ico` sits at the root for browsers that ask for it unprompted. Cosmetic, and visible
+here on purpose.
+
 `deploy/web/` and `.vercel/` are git-ignored. `web/vercel.json` carries the SPA rewrite so a
-hard refresh of `/evals` serves `index.html`.
+hard refresh of `/evals` serves `index.html`; its `_comment` key fails Vercel's schema check
+("should NOT have additional property"), so the staged copy drops it (the provided file is
+untouched). CLI 59 has no `--name`: `vercel link --project` names the project, and `--yes`
+makes both steps non-interactive, so nothing here needs Kurt after `vercel login`.
+Production URL: **https://lumina-claude.vercel.app** (first deployed 2026-09-15 07:04 ET).
 
 ## 4. Bench, export, eval — against the deployed gateway
 
+`eval/eval.mjs` is what the grader runs, and it runs its own benches: gate 2 is a `--smoke`
+bench and gate 4 is a full bench, both against `--deploy-url`. So the sequence is eval first,
+then get the deployed trajectories onto disk, then the quality check and the report:
+
 ```
 mv runs runs.local-$(date +%Y%m%d)        # keep the local evidence; the eval must read the deployed run
-node benchmark/bench.mjs --target https://lumina-claude-gateway.fly.dev
-node scripts/export-runs.mjs              # Mongo `runs` → runs/<requestId>.json (uses MONGODB_DB from .env)
-node scripts-local/sort-failing.mjs       # error runs → runs/failing/ (the export puts everything in runs/; rule A2)
-node quality/check.mjs .
-node eval/eval.mjs --deploy-url https://lumina-claude-gateway.fly.dev
-node eval/build-report.mjs --successful <requestId> --failing <requestId>
+node eval/eval.mjs --deploy-url https://lumina-claude-gateway.fly.dev     # gates 0–5; ≈ $1.30, ≈ 12 min
+node scripts-local/export-since.mjs --since <deploy time, ISO>            # Mongo `runs` (createdAt ≥ cutoff) → runs/
+node scripts-local/sort-failing.mjs       # error runs → runs/failing/ (rule A2)
+node quality/check.mjs .                  # expect 0 errors, 2 warnings (A3 deep fetch thrash, P2)
+node eval/build-report.mjs --student "Kurt Lozier" --design DESIGN.md \
+  --successful <requestId> --failing <requestId> --notes "…" --video <url> --out reports/report.json
+cp reports/report.json reports/latest.json
+fly deploy -c fly.gateway.toml --remote-only     # the image carries reports/latest.json; app.ts serves it
 ```
+
+Why not the provided `scripts/export-runs.mjs`: it dumps the newest 500 runs with no time
+filter, so it mixes every earlier local bench into `runs/` and the quality check scores history
+(2026-09-15: 500 files, an old capped run tripped A2). `export-since.mjs` writes the same
+RunLog shape for runs at or after a cutoff; `--list` prints depth, user, tool names and the
+query per run (how to pick the P1 trajectories and to confirm no quick run called
+`plan_research`); `--dry-run` counts only. Gate 0 lints the tree, so `eslint.config.mjs`
+ignores `deploy/**` and `runs.local-*/**` (the staged UI bundle is one minified line).
+
+A failing run for P1 exists only if the deployed bench produced one; the 2026-09-15 run had
+none, so `runs/failing/` carries session 6's `req_793296f3-0fe` from the Mongo `runs`
+collection (a real error run of this build). `runs/failing/` is outside the A2 scan.
 
 Then open `https://lumina-claude.vercel.app/evals` and read every number against `reports/`.
 

@@ -1,13 +1,14 @@
 # DESIGN.md — LUMINA (Claude build)
 
-> v1.4, 2026-09-14. Drafted 2026-09-09 as v0.1; the two open trade-offs (LLM provider, worker
+> v1.5, 2026-09-15. Drafted 2026-09-09 as v0.1; the two open trade-offs (LLM provider, worker
 > placement) were decided by Kurt on 2026-09-11 as v1.0. v1.1 updates the design to match the
 > week 2 build: Spaces, ingest, hybrid retrieval, and deep search are now running. v1.2 applies
 > the docs-mode preflight rule to web mode (Kurt, 2026-09-14); v1.3 adds Sonnet 5 for the deep
 > answer only, trade-off 9; v1.4, after the first full bench: the fresh-thread gate on the
 > preflight becomes a standalone-question check, memory recall becomes the loop's own first
 > step, memory requests keep their model turn, and Tavily raw content is cleaned of markdown
-> before a snippet is chosen. The five graded headings below are read by `eval/build-report.mjs`.
+> before a snippet is chosen; v1.5, deployed: auto mode with a Space that answered takes the
+> docs fast path (trade-off 10). The five graded headings below are read by `eval/build-report.mjs`.
 
 ## Components
 
@@ -78,6 +79,15 @@ Docs mode answers straight from the preflight document search when it found anyt
 may request at most `DOCS_EXTRA_SEARCHES` (1) more, enforced in the loop and stated in the trace
 `reason`. That change took docs-mode TTFT p95 from 12.35 s to 1.62 s, because every recall hit
 had already come from the preflight search.
+
+Auto mode with a Space attached searches the Space first as well, and since v1.5 it also
+answers straight from that search when it found anything. Until then auto kept its model turn
+so the model could add the web; on the bench's mode=auto probe the model spent that turn on a
+fetch of a doc source (rejected in 0 ms, doc sources have no URL), a web search and a page
+fetch before answering: TTFT 6.9 s and 9.4 s in the two deployed runs of 2026-09-15, against
+0.4–1.0 s for the same question in docs mode. Gate 2 of the provided eval is a five-query smoke
+whose p95 is its slowest query, and it blocks every later gate, so that one turn failed the
+grader's path outright. Empty retrieval keeps the turn in both modes.
 
 Web mode now follows the same rule on a fresh thread: when the preflight search returns page
 text for at least two results (`WEB_PREFLIGHT_MIN_SOURCES`), the loop goes straight to
@@ -253,3 +263,14 @@ report; the quota collection is the gate, and the two can differ by refunded pla
   question g35 describes p95 as the nineteenth slowest while the helper takes the nineteenth
   smallest: recorded, fixture untouched. The sample scorecard in TECHNICAL.md does not add up
   and `PRODUCT_EVAL.md` is retired by SUBMISSION.md: neither is followed.
+
+10. **Auto mode answers from the Space alone when the Space answered.** With a Space attached,
+    `auto` used to search the documents first and then give the model a turn to add the web.
+    Since 2026-09-15 a productive document search goes straight to synthesis, exactly as in
+    docs mode, and the web is a mode switch away. What is given up: an auto question whose best
+    answer needs both the attached documents and the web now gets the documents. What is gained:
+    the mode=auto probe's TTFT drops from 6.9–9.4 s (a research turn the model spent on a
+    doc-source fetch that cannot work, then the web) to the docs-mode 0.4–1.0 s, and the eval's
+    smoke gate, which blocks on a five-sample p95 and blocks every gate after it, stops failing
+    on that one question. When the Space returns nothing, auto still keeps its turn and can go
+    to the web. Revert is one condition in `loop/research.ts`.

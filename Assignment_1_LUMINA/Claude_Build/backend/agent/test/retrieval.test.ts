@@ -197,14 +197,24 @@ test('at least one doc citation carries locator.page, which is what the bench ch
   assert.ok(pages[0]!.title.endsWith('.pdf'), 'a page locator belongs to the PDF, and the title is its filename');
 });
 
-test('mode=auto with a Space attached reaches for the documents on its own', async () => {
-  useScript([{ text: 'ready' }, { text: 'From the Space [1].' }]);
+test('mode=auto with a Space attached reaches for the documents on its own, and answers straight from them', async () => {
+  // ONE scripted turn: the Space answered, so there is no research turn — the single model
+  // call is the synthesis. (Before 2026-09-15 auto kept its turn; on the bench's mode=auto
+  // probe the model spent it on a doc-source fetch, a web search and a page fetch: TTFT 6.9 s
+  // and 9.4 s deployed, and the eval's smoke gate blocks on a five-sample p95.)
+  useScript([{ text: 'From the Space [1].' }]);
   const { frames } = await ask({ query: 'What does the terminated field mean?', mode: 'auto', spaceId });
 
   const traces = tracesOf(frames);
   assert.equal(traces[1]?.tool, 'search_documents', 'auto searches the Space before the first model turn (after the memory recall)');
   assert.match(traces[1]?.reason ?? '', /mode=auto/);
+  assert.equal(traces.length, 2, 'recall, then the Space search: no research step');
   assert.ok(sourcesOf(frames).some((s) => s.kind === 'doc'), 'and it produced a doc source');
+  const answer = frames
+    .filter((f) => f.event === 'token')
+    .map((f) => (f.data as { text: string }).text)
+    .join('');
+  assert.match(answer, /From the Space \[1\]/, 'the one scripted turn was the synthesis');
 });
 
 test('search_documents with no Space is a visible failed step, and the answer cites nothing', async () => {

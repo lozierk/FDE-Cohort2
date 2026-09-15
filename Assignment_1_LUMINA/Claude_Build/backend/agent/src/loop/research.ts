@@ -284,11 +284,18 @@ export async function runResearch(input: ResearchInput): Promise<ResearchResult>
      * documents only and the loop has already run their exact question against them; a
      * research turn here can only re-search. Measured 2026-09-14 over the 39 gold questions:
      * every recall hit came from this preflight, and each extra model turn cost ~2 s of a
-     * 2.5 s TTFT budget (p95 was 9-12 s). Auto mode keeps its turn: the model still decides
-     * whether the web is needed as well. Empty retrieval keeps its turn too, so the model can
-     * reformulate once before the answer says nothing was found.
+     * 2.5 s TTFT budget (p95 was 9-12 s).
+     *
+     * Auto mode takes the same path once the Space answered (2026-09-15, deployed). It used to
+     * keep its turn so the model could add the web; on the bench's mode=auto probe the model
+     * spent that turn on a fetch_page of a doc source (rejected, 0 ms), a web search and a page
+     * fetch before answering: TTFT 6.9 s and 9.4 s in two deployed runs, and gate 2 of
+     * eval/eval.mjs blocks on the smoke's five-sample p95. A Space the user attached and that
+     * matched their exact question is the answer they asked for; the web is one mode switch
+     * away. Empty retrieval keeps its turn in both modes, so the model can reformulate once
+     * (auto: or go to the web) before the answer says nothing was found.
      */
-    if (input.mode === 'docs' && first.ok && registry.toSources(input.question).length > 0) {
+    if ((input.mode === 'docs' || input.mode === 'auto') && first.ok && registry.toSources(input.question).length > 0) {
       skipResearch = true;
     }
   }

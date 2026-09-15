@@ -2,7 +2,7 @@ import js from '@eslint/js';
 import ts from 'typescript-eslint';
 
 export default [
-  { ignores: ['**/dist/**', '**/node_modules/**', 'runs/**', 'reports/**', 'eval/gold/corpus/**'] },
+  { ignores: ['**/dist/**', '**/node_modules/**', 'runs/**', 'runs.local-*/**', 'reports/**', 'deploy/**', 'eval/gold/corpus/**'] },
   js.configs.recommended,
   ...ts.configs.recommended,
   {

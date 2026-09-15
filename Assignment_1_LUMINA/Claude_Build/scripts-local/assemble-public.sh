@@ -6,7 +6,7 @@
 set -euo pipefail
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="${OUT:-/private/tmp/claude-501/-Users-kurtlozier-Learning-Hamza-Cohort-02-Forward-Deployed-Engineering-Bootcamp-Assignment-1-LUMINA/b58e47ce-3fdf-4551-b320-57abf7d0a8a8/scratchpad/pubrepo}"
-REMOTE="${REMOTE:-git@github.com:lozierk/Claude_Build_Submission.git}"
+REMOTE="${REMOTE:-https://github.com/lozierk/Claude_Build_Submission.git}"
 MSG="${1:-Snapshot $(TZ=America/New_York date '+%Y-%m-%d %H:%M ET')}"
 mkdir -p "$OUT"
 if [ ! -d "$OUT/.git" ]; then git -C "$OUT" init -q -b main; git -C "$OUT" remote add origin "$REMOTE"; fi

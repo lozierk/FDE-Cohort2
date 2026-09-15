@@ -88,13 +88,17 @@ Production URL: **https://lumina-claude.vercel.app** (first deployed 2026-09-15 
 
 `eval/eval.mjs` is what the grader runs, and it runs its own benches: gate 2 is a `--smoke`
 bench and gate 4 is a full bench, both against `--deploy-url`. So the sequence is eval first,
-then get the deployed trajectories onto disk, then the quality check and the report:
+but gate 3 reads `runs/` from disk BEFORE gate 4's bench runs, so `runs/` must already hold
+deployed run logs when `eval.mjs` starts (2026-09-15 09:44 ET: an empty `runs/` failed gate 3
+after a green smoke). Export first, eval, export again, then the quality check and the report:
 
 ```
-mv runs runs.local-$(date +%Y%m%d)        # keep the local evidence; the eval must read the deployed run
-node eval/eval.mjs --deploy-url https://lumina-claude-gateway.fly.dev     # gates 0–5; ≈ $1.30, ≈ 12 min
+mv runs runs.local-$(date +%Y%m%d)        # keep the local evidence; runs/ must hold DEPLOYED runs only
 node scripts-local/export-since.mjs --since <deploy time, ISO>            # Mongo `runs` (createdAt ≥ cutoff) → runs/
 node scripts-local/sort-failing.mjs       # error runs → runs/failing/ (rule A2)
+node eval/eval.mjs --deploy-url https://lumina-claude-gateway.fly.dev     # gates 0–5; ≈ $1.30, ≈ 12 min
+node scripts-local/export-since.mjs --since <same cutoff>                 # again: add the eval's own runs
+node scripts-local/sort-failing.mjs
 node quality/check.mjs .                  # expect 0 errors, 2 warnings (A3 deep fetch thrash, P2)
 node eval/build-report.mjs --student "Kurt Lozier" --design DESIGN.md \
   --successful <requestId> --failing <requestId> --notes "…" --video <url> --out reports/report.json

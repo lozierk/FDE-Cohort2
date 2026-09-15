@@ -1,0 +1,34 @@
+# LUMINA agent service — PRIVATE. No [http_service] and no [[services]] on purpose: the app
+# gets no public address and is reachable only over Fly private networking (6PN) as
+# http://lumina-claude-agent.internal:8000 from the gateway in the same org. That is what
+# keeps the keys and the deep-search cap unreachable from the browser (TECHNICAL.md Part 4).
+#
+#   fly deploy -c fly.agent.toml                       # from Claude_Build/
+#   grep -vE '^\s*(#|$)' .env | fly secrets import -a lumina-claude-agent
+
+app = "lumina-claude-agent"
+primary_region = "iad"           # Ashburn: nearest Fly region to Atlas us-east-1
+
+[build]
+  dockerfile = "Dockerfile.agent"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "8000"
+  LOG_LEVEL = "info"
+  RUNS_DIR = "/tmp/runs"         # ephemeral by design: Mongo `runs` is the durable copy,
+                                 # scripts/export-runs.mjs pulls it back to disk for the eval
+
+# TCP check rather than HTTP: /health pings the providers, and a probe every 30 s should not
+# spend on them. The gateway's HTTP check covers the whole chain.
+[checks]
+  [checks.alive]
+    type = "tcp"
+    port = 8000
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "20s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1024mb"              # jsdom + pdfjs + the forked jobs worker; 512 is too tight

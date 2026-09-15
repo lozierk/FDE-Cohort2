@@ -1,0 +1,42 @@
+# LUMINA gateway — PUBLIC. The browser (the Vercel UI) and the grader talk to this app; it
+# talks to the private agent over 6PN. Streams SSE, holds a deep ask open for up to
+# MAX_WALL_CLOCK_SEC_DEEP + 10 s — which is why it is a long-lived process on Fly and not a
+# Vercel function.
+#
+#   fly deploy -c fly.gateway.toml                     # from Claude_Build/
+#   fly secrets set CORS_ORIGINS=https://<ui>.vercel.app -a lumina-claude-gateway   # once the UI URL exists
+
+app = "lumina-claude-gateway"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile.gateway"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "8787"
+  LOG_LEVEL = "info"
+  AGENT_URL = "http://lumina-claude-agent.internal:8000"
+  RATE_LIMIT_PER_MINUTE = "300"  # the bench runs 40 queries at concurrency 4 (Kurt, CLAUDE-068)
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  auto_stop_machines = "off"     # the bench measures TTFT; a cold-started machine is not the app
+  auto_start_machines = true
+  min_machines_running = 1
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 50
+    hard_limit = 100
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "15s"
+    method = "GET"
+    path = "/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

@@ -1,0 +1,35 @@
+# LUMINA gateway — public Fly app. Build context is Claude_Build/ (the npm workspace root)
+# because the gateway depends on the workspace package @lumina/contract.
+#
+#   fly deploy -c fly.gateway.toml      # from Claude_Build/
+
+# ---- build ---------------------------------------------------------------------------------
+FROM node:22-slim AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY packages/contract/package.json packages/contract/
+COPY backend/agent/package.json backend/agent/
+COPY backend/gateway/package.json backend/gateway/
+COPY web/package.json web/
+RUN npm ci
+COPY packages/contract packages/contract
+COPY backend/gateway backend/gateway
+RUN npm run build -w @lumina/contract && npm run build -w @lumina/gateway
+
+# ---- runtime -------------------------------------------------------------------------------
+FROM node:22-slim
+ENV NODE_ENV=production
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY packages/contract/package.json packages/contract/
+COPY backend/agent/package.json backend/agent/
+COPY backend/gateway/package.json backend/gateway/
+COPY web/package.json web/
+RUN npm ci --omit=dev -w @lumina/contract -w @lumina/gateway && npm cache clean --force
+COPY --from=build /app/packages/contract/dist packages/contract/dist
+COPY --from=build /app/backend/gateway/dist backend/gateway/dist
+
+WORKDIR /app/backend/gateway
+ENV PORT=8787
+EXPOSE 8787
+CMD ["node", "dist/index.js"]

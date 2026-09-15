@@ -8,3 +8,7 @@ runs/
 reports/
 *.log
 .DS_Store
+
+# deploy artefacts (Vercel link + prebuilt static UI copy)
+.vercel/
+deploy/web/

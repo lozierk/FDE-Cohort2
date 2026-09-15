@@ -1,0 +1,24 @@
+# Build context is Claude_Build/. Keep secrets, evidence and local artefacts out of the image.
+.git
+.env
+.env.*
+!.env.example
+node_modules
+**/node_modules
+**/dist
+runs
+reports
+fixtures
+web/src
+web/public
+benchmark
+eval
+quality
+scripts
+board
+docs
+*.md
+*.log
+.DS_Store
+.vercel
+deploy

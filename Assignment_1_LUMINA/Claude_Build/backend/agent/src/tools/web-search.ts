@@ -1,4 +1,5 @@
 import { cachedSearch } from '../cache/search-cache.js';
+import { cleanRawContent } from '../providers/tavily.js';
 import { str, type Tool, type ToolResult } from './types.js';
 
 /**
@@ -43,13 +44,16 @@ export const webSearch: Tool = {
 
     const added: number[] = [];
     const lines: string[] = [];
-    for (const r of results) {
+    for (const r of results.filter((r) => citableUrl(r.url))) {
+      // Cleaned HERE as well as in the provider: the search cache holds results for six hours,
+      // and a row written before the cleaning existed still carries the markdown.
+      const text = r.content ? cleanRawContent(r.content) : '';
       const n = ctx.sources.add({
         kind: 'web',
         title: r.title,
         url: r.url,
         searchSnippet: r.snippet,
-        ...(r.content ? { text: r.content } : {}),
+        ...(text ? { text } : {}),
         ...(ctx.subQuestion ? { subQuestion: ctx.subQuestion } : {})
       });
       added.push(n);
@@ -61,3 +65,24 @@ export const webSearch: Tool = {
     return { ok: true, content: lines.join('\n'), sourcesAdded: added };
   }
 };
+
+/**
+ * Hosts whose "page text" is not in the page. A YouTube result's raw content is the
+ * transcript or description; the HTML a grader fetches is a player shell, so a citation to
+ * it can never be verified and counts as ungrounded (4 of 18 failures on the first full
+ * bench). Login walls are the same story. Such a result is not evidence, so it is not a source.
+ */
+const UNCITABLE_HOSTS = [
+  'youtube.com', 'youtu.be', 'vimeo.com', 'tiktok.com',
+  'x.com', 'twitter.com', 'facebook.com', 'instagram.com', 'linkedin.com'
+];
+
+export function citableUrl(url: string): boolean {
+  let host: string;
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  return !UNCITABLE_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
+}

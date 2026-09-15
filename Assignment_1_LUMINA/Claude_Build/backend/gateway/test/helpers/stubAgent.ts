@@ -78,6 +78,13 @@ export function startStubAgent(opts: StubAgentOptions = {}): Promise<StubAgent> 
         return;
       }
 
+      // The real agent answers a delete with 204 and no body (routes/memory.ts).
+      if (req.method === 'DELETE' && /^\/memory\/[^/]+$/.test(url)) {
+        res.writeHead(204);
+        res.end();
+        return;
+      }
+
       res.writeHead(404, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ error: `stub: no route ${req.method} ${url}`, status: 404 }));
     });

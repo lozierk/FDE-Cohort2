@@ -41,7 +41,13 @@ export interface Candidate {
   subQuestion?: number;
 }
 
-export const SNIPPET_MIN = 40;
+/**
+ * 160, not 40: the grounding check needs 12 consecutive matching tokens, and a page often
+ * serves one token differently from what we read (an apostrophe as `&rsquo;`, which the
+ * grader's tag-stripper turns into a space). A 15-token snippet with one such token in the
+ * middle has no clean run of 12; a 25-token one has a run on one side of it.
+ */
+export const SNIPPET_MIN = 160;
 export const SNIPPET_MAX = 300;
 
 /** `p3` / `h:Bounded, or not a loop` / `l42`. Part of a doc candidate's dedupe key. */
@@ -319,6 +325,20 @@ export function terms(query: string): string[] {
  * to match, so a 6-word winning sentence on its own would fail a citation that is perfectly
  * honest. Growing keeps it verbatim: the result is still a contiguous run of the source text.
  */
+/**
+ * A rendered formula (`WeightedRRF(d)=r∈R∑wr⋅k+rank…`) or a stretch of link syntax is text
+ * we were given, but never text a grader finds in the page's HTML — MathML and nav bars do
+ * not strip to the same characters. More than 8% of a sentence outside plain prose
+ * characters marks it as such, and the chooser moves on to the next sentence. (Prose with
+ * curly quotes and a dash sits under 3%; the RRF formula above sits at 15%.)
+ */
+export function looksLikeMarkup(sentence: string): boolean {
+  const s = sentence.trim();
+  if (!s) return false;
+  const odd = (s.match(/[^a-z0-9\s.,;:'"()\-?!%$/&+]/gi) ?? []).length;
+  return odd / s.length > 0.08;
+}
+
 export function bestPassage(text: string, query: string, max = SNIPPET_MAX, min = SNIPPET_MIN): string | null {
   const clean = text.replace(/\s+/g, ' ').trim();
   if (!clean) return null;
@@ -333,6 +353,7 @@ export function bestPassage(text: string, query: string, max = SNIPPET_MAX, min 
   for (let i = 0; i < sentences.length; i++) {
     const s = sentences[i] ?? '';
     if (s.length > max) continue; // cannot be used whole; prefer one that fits
+    if (looksLikeMarkup(s)) continue; // a formula or a nav bar is never verbatim in the page's text
     let score = 0;
     for (const t of new Set(terms(s))) if (want.has(t)) score += 1;
     // Nudge toward passages already long enough to be verifiable.

@@ -72,8 +72,10 @@ export class FakeLlm implements LlmProvider {
    * the conversation, because that is what a model does — not by counting the loop's phases.
    */
   private improvise(req: LlmRequest): FakeTurn {
+    // A search, specifically: the loop's own memory recall also lands as a tool_result, and a
+    // model that took "I remembered something" for "I searched" would answer without sources.
     const hasResults = req.messages.some((m) =>
-      m.content.some((b) => b.type === 'tool_result' && !b.is_error)
+      m.role === 'assistant' && m.content.some((b) => b.type === 'tool_use' && b.name === 'web_search')
     );
     const offersSearch = req.tools?.some((t) => t.name === 'web_search') ?? false;
     if (!hasResults && offersSearch) {

@@ -351,7 +351,7 @@ test('a quick ask that reaches for plan_research is refused, and stays a quick a
 
   const tools = frames.filter((f) => f.event === 'trace').map((f) => (f.data as { tool: string }).tool);
   assert.ok(!tools.includes('plan_research'), 'a refusal is not an escalation and is not traced as one');
-  assert.deepEqual(tools, ['web_search']);
+  assert.deepEqual(tools, ['recall_memory', 'web_search']);
   assert.ok(!frames.some((f) => f.event === 'plan'));
   assert.equal((frames.find((f) => f.event === 'done')!.data as { depth: string }).depth, 'quick');
 });

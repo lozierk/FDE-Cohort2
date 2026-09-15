@@ -64,3 +64,12 @@ test('toPassages: same numbers as toSources, longer verbatim window containing t
   assert.ok(passages[0]!.text.length <= 1500, 'window is capped');
   assert.ok(passages[0]!.text.length > sources[0]!.snippet.length, 'window is longer than the snippet');
 });
+
+test('the passage chooser skips a formula or a nav bar and picks the prose next to it', async () => {
+  const { looksLikeMarkup } = await import('../src/loop/sources.js');
+  assert.equal(looksLikeMarkup('WeightedRRF(d)=r∈R∑​wr​⋅k+rankr​(d)1​ Where d is a document'), true);
+  assert.equal(looksLikeMarkup('Reciprocal rank fusion combines two ranked lists by summing one over k plus rank, and it needs no calibration.'), false);
+  const text = 'WeightedRRF(d)=r∈R∑​wr​⋅k+rankr​(d)1​ where d ∈ R. Reciprocal rank fusion combines two ranked lists by summing one over k plus rank for every document, and it needs no score calibration between the lists, which is what makes it the default choice for hybrid retrieval. The constant k is usually sixty, which damps the effect of the very top ranks so that one list cannot dominate the other on its own.';
+  const snippet = bestPassage(text, 'How does reciprocal rank fusion combine two ranked lists?');
+  assert.ok(snippet && !snippet.includes('∑'), `the formula is not the snippet: ${snippet}`);
+});

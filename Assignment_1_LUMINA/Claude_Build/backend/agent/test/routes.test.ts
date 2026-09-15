@@ -125,15 +125,25 @@ test('the run log lands on disk in the RunLog shape', async () => {
   }
 });
 
-test('a provider that throws before any frame is a 502 with an ErrorBody', async () => {
+test('a provider that throws on the first model call ends with an error frame that never carries a key', async () => {
+  // The loop's memory recall is always the first frame, so the status line is spent before
+  // any model call and a provider failure surfaces as the stream's error event (status 502
+  // inside it), not as a 502 response. The ErrorBody path remains for failures before that.
   searchLru.clear();
   useScript([{ throws: 'anthropic: 401 authentication_error' }]);
   const threadId = await newThread();
   const res = await post(`/threads/${threadId}/ask`, { query: 'anything', mode: 'auto' });
-  assert.equal(res.status, 502);
-  const body = ErrorBody.parse(await res.json());
-  assert.match(body.error, /llm provider failed/);
-  assert.ok(!/api[_-]?key|sk-ant/i.test(body.error), 'the error never carries a key');
+  assert.equal(res.status, 200, 'the recall trace was already streamed');
+  const frames = parseSse(await res.text());
+  assert.equal(frames[0]?.event, 'trace');
+  assert.equal((frames[0]!.data as { tool: string }).tool, 'recall_memory');
+  const last = frames.at(-1)!;
+  assert.equal(last.event, 'error');
+  const err = last.data as { status: number; error: string };
+  assert.equal(err.status, 502);
+  assert.match(err.error, /llm provider failed/);
+  assert.ok(!/api[_-]?key|sk-ant/i.test(err.error), 'the error never carries a key');
+  assert.ok(!frames.some((f) => f.event === 'token' || f.event === 'done'), 'no answer, no success');
 });
 
 test('a provider that throws mid-stream ends with an error frame, not a plausible answer', async () => {

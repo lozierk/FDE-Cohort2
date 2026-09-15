@@ -11,6 +11,8 @@ import type { SourceRegistry } from './sources.js';
 
 /** Pages with fetched text the web preflight must return before the quick loop skips its research turn. */
 export const WEB_PREFLIGHT_MIN_SOURCES = 2;
+/** Results without extracted text the loop will fetch itself, in web mode, before giving the model a turn. */
+export const WEB_PREFLIGHT_FETCHES = 2;
 
 /**
  * The research phase, on its own, because a deep search runs it once per sub-question while a
@@ -71,8 +73,12 @@ export interface ResearchInput {
    * shared cap binds there. Hitting it is a normal stop, not a cap — see `terminated`.
    */
   perCallBudget?: number;
-  /** Which first retrieval call the loop makes itself instead of paying a model turn to suggest it. */
-  preflight: { web: boolean; docs: boolean };
+  /**
+   * Which first retrieval call the loop makes itself instead of paying a model turn to suggest
+   * it. `memory` recalls what is known about the user before anything else; it never decides
+   * whether the model gets a turn, it only makes sure the answer can know who is asking.
+   */
+  preflight: { web: boolean; docs: boolean; memory?: boolean };
   /** Document searches the model may add on top of the preflight, for this phase. */
   docsExtraSearches: number;
   system: string;
@@ -89,6 +95,8 @@ export interface ResearchResult {
   toolCalls: RunToolCall[];
   /** `cap` only when the SHARED envelope ran out; a spent per-phase budget is a normal stop. */
   terminated: 'done' | 'cap';
+  /** What the memory preflight recalled about the user, one line each; empty when it did not run. */
+  memories: string[];
 }
 
 type ToolResult0 = { ok: true; content: string } | { ok: false; error: string };
@@ -163,10 +171,16 @@ export async function runResearch(input: ResearchInput): Promise<ResearchResult>
    * user turn. Anything else and the model cannot tell a search that already happened from a
    * suggestion that one should — which it answers by searching again, for the whole prompt.
    */
-  const preflight = async (tool: 'web_search' | 'search_documents', reason: string): Promise<ToolResult0> => {
-    const args = { query: input.question };
+  let preflights = 0;
+  const preflight = async (
+    tool: 'web_search' | 'search_documents' | 'recall_memory' | 'fetch_page',
+    reason: string,
+    args: Record<string, unknown> = { query: input.question }
+  ): Promise<ToolResult0> => {
     const first = await runTool(tool, args, reason);
-    const useId = `toolu_lumina_preflight_${tool}${input.subQuestion ? `_${input.subQuestion}` : ''}`;
+    // Unique per call: two preflight fetches with one id would be rejected by the provider
+    // the moment a model turn follows them.
+    const useId = `toolu_lumina_preflight_${tool}_${(preflights += 1)}${input.subQuestion ? `_${input.subQuestion}` : ''}`;
     messages.push({ role: 'assistant', content: [{ type: 'tool_use', id: useId, name: tool, input: args }] });
     messages.push({
       role: 'user',
@@ -186,14 +200,33 @@ export async function runResearch(input: ResearchInput): Promise<ResearchResult>
   /** The preflight already answered the question; a model turn here can only re-search. */
   let skipResearch = false;
 
+  /**
+   * Memory first, and always as a real step: the bench looks for a `recall_memory` step in a
+   * NEW thread's trace to prove a preference crossed the thread boundary, and the synthesis
+   * needs the text either way. Before this, recall happened only when the model chose it in a
+   * research turn — and the fast paths above take that turn away. One embedding and one
+   * Mongo scan, ~100 ms, and never a reason to skip or keep the model's turn.
+   */
+  const memories: string[] = [];
+  if (input.preflight.memory && allowedNames.has('recall_memory') && !sharedCapReached()) {
+    const recalled = await preflight('recall_memory', 'new request: recall what is known about this user');
+    if (recalled.ok) {
+      for (const line of recalled.content.split('\n')) {
+        const m = /^- (.*?)(?: \(score [\d.]+, id [^)]+\))?$/.exec(line.trim());
+        if (m?.[1]) memories.push(m[1]);
+      }
+    }
+  }
+
   // The cap is checked before the preflight too, not only inside the turn loop: deep launches
   // a sub-question with one call left and would otherwise spend two on its two preflights,
   // and 25 trace steps under a cap of 24 fails the budget gate by one.
   if (input.preflight.web && allowedNames.has('web_search') && !sharedCapReached()) {
     const first = await preflight('web_search', input.subQuestion ? `sub-question ${input.subQuestion}: search first` : 'mode=web: search first');
     /**
-     * web mode, fresh thread, quick run, and the search came back with page text for at
-     * least WEB_PREFLIGHT_MIN_SOURCES results: go straight to synthesis, the docs-mode rule
+     * web mode, quick run, the preflight ran (fresh thread, or a question that stands on
+     * its own — standalone.ts), and the search came back with page text for at least
+     * WEB_PREFLIGHT_MIN_SOURCES results: go straight to synthesis, the docs-mode rule
      * applied to the web. Measured 2026-09-14 over 25 quick web runs: the cold search took
      * 1.3-2.9 s, each research turn ~2 s, and the median run spent one turn to fetch one more
      * page — so TTFT ran 4.7-13 s against a 2.5 s p95 gate. `toSources` already drops any
@@ -202,8 +235,33 @@ export async function runResearch(input: ResearchInput): Promise<ResearchResult>
      * sub-questions keep theirs too: their per-sub budget exists to read further, and the
      * source-ratio gate is what pays for it.
      */
-    if (!input.subQuestion && input.mode === 'web' && first.ok && registry.toSources(input.question).length >= WEB_PREFLIGHT_MIN_SOURCES) {
-      skipResearch = true;
+    if (!input.subQuestion && input.mode === 'web' && first.ok) {
+      let citable = registry.toSources(input.question).length;
+      if (citable >= WEB_PREFLIGHT_MIN_SOURCES) skipResearch = true;
+      else if (allowedNames.has('fetch_page')) {
+        /**
+         * Under the threshold, the model's turn went one way every time: fetch a result the
+         * search had not extracted. The third full bench (2026-09-14) put its TTFT p95 on the
+         * two queries that took that turn — 7.9 s and 8.9 s against ~0.7 s for the other 38.
+         * So the loop does the fetch itself, up to WEB_PREFLIGHT_FETCHES results, and skips
+         * the turn once the threshold is met. A fetch that fails is a visible failed step and
+         * the model keeps its turn, as before.
+         */
+        const unread = registry.all().filter((c) => c.kind === 'web' && c.url && !c.text?.trim());
+        for (const c of unread.slice(0, WEB_PREFLIGHT_FETCHES)) {
+          if (sharedCapReached() || input.budget.toolCalls() <= 0) break;
+          await preflight(
+            'fetch_page',
+            `mode=web: the search extracted text for ${citable} page(s), reading ${c.url} before deciding`,
+            { url: c.url }
+          );
+          citable = registry.toSources(input.question).length;
+          if (citable >= WEB_PREFLIGHT_MIN_SOURCES) {
+            skipResearch = true;
+            break;
+          }
+        }
+      }
     }
   }
 
@@ -338,7 +396,7 @@ export async function runResearch(input: ResearchInput): Promise<ResearchResult>
     if (terminated === 'cap') break;
   }
 
-  return { toolCalls: mine, terminated };
+  return { toolCalls: mine, terminated, memories };
 }
 
 // ---------------------------------------------------------------- the provider call

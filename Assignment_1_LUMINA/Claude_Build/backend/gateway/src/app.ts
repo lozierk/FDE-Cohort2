@@ -165,6 +165,13 @@ async function proxyJson(
     return;
   }
 
+  // 204 has no body by definition — DELETE /memory/:id answers that way — and mirroring it
+  // as a "non-JSON body" 502 is how the first full bench lost every memory gate to a delete
+  // that had in fact succeeded.
+  if (upstream.status === 204) {
+    res.status(204).end();
+    return;
+  }
   let json: unknown;
   try {
     json = await upstream.json();

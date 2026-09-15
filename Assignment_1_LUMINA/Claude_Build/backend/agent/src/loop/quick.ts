@@ -19,6 +19,7 @@ import type { ToolContext } from '../tools/types.js';
 import { researchSystemPrompt, synthesisSystemPrompt, synthesisUserContent } from './prompts.js';
 import { callLlm, runResearch, type ResearchBudget, type RunToolCall } from './research.js';
 import { SourceRegistry } from './sources.js';
+import { looksLikeMemoryRequest, looksStandalone } from './standalone.js';
 
 export type { RunToolCall } from './research.js';
 
@@ -79,6 +80,8 @@ export async function runQuickLoop(input: QuickLoopInput): Promise<QuickLoopResu
 
   const allowed = toolsForMode(input.mode);
   const history = input.history.slice(-10);
+  const standalone = history.length === 0 || looksStandalone(input.query);
+  const memoryRequest = looksLikeMemoryRequest(input.query);
 
   const ctx: ToolContext = {
     userId: input.userId,
@@ -143,10 +146,15 @@ export async function runQuickLoop(input: QuickLoopInput): Promise<QuickLoopResu
       ctx,
       budget,
       // A fresh thread has nothing to follow up on, so the first retrieval call is one the
-      // loop already knows it wants. A follow-up does not: the model reads the history first.
+      // loop already knows it wants. So is a question that stands on its own (standalone.ts)
+      // — the bench sends 40 of them down one thread. A real follow-up does not: the model
+      // reads the history first.
+      // "Remember that I prefer…" is an instruction, not a query: no search, and the model
+      // keeps its turn, because save_memory is a tool only a model turn can call.
       preflight: {
-        web: input.mode === 'web' && history.length === 0,
-        docs: Boolean(input.spaceId) && history.length === 0 && (input.mode === 'docs' || input.mode === 'auto')
+        web: input.mode === 'web' && standalone && !memoryRequest,
+        docs: Boolean(input.spaceId) && standalone && !memoryRequest && (input.mode === 'docs' || input.mode === 'auto'),
+        memory: true
       },
       docsExtraSearches: env.docsExtraSearches,
       system: researchSystemPrompt({
@@ -175,7 +183,7 @@ export async function runQuickLoop(input: QuickLoopInput): Promise<QuickLoopResu
     const synth = await callLlm(
       deps,
       {
-        system: synthesisSystemPrompt({ mode: input.mode, depth: 'quick' }),
+        system: synthesisSystemPrompt({ mode: input.mode, depth: 'quick', memories: research.memories }),
         messages: [
           {
             role: 'user',

@@ -147,12 +147,13 @@ test('mode=docs searches the Space first and every doc source carries docId, loc
   const { frames } = await ask({ query: 'What is the default value of the k1 parameter?', mode: 'docs', spaceId });
 
   const traces = tracesOf(frames);
-  assert.equal(traces.length, 1, 'the preflight is the only step: no research turn after a hit in docs mode');
-  assert.equal(traces[0]?.tool, 'search_documents', 'the preflight search is the first step in the trace');
+  assert.equal(traces.length, 2, 'memory recall, then the preflight: no research turn after a hit in docs mode');
+  assert.equal(traces[0]?.tool, 'recall_memory', 'the loop recalls memory first, on every run');
+  assert.equal(traces[1]?.tool, 'search_documents', 'the preflight search is the first retrieval in the trace');
   const answer = frames.filter((f) => f.event === 'token').map((f) => (f.data as { text: string }).text).join('');
   assert.match(answer, /say what they say \[1\]/, 'the single scripted turn was the synthesis');
-  assert.equal(traces[0]?.ok, true);
-  assert.match(traces[0]?.reason ?? '', /mode=docs/, 'the trace says why the step happened');
+  assert.equal(traces[1]?.ok, true);
+  assert.match(traces[1]?.reason ?? '', /mode=docs/, 'the trace says why the step happened');
 
   const sources = sourcesOf(frames);
   assert.ok(sources.length > 0, 'the Space produced sources');
@@ -201,8 +202,8 @@ test('mode=auto with a Space attached reaches for the documents on its own', asy
   const { frames } = await ask({ query: 'What does the terminated field mean?', mode: 'auto', spaceId });
 
   const traces = tracesOf(frames);
-  assert.equal(traces[0]?.tool, 'search_documents', 'auto searches the Space before the first model turn');
-  assert.match(traces[0]?.reason ?? '', /mode=auto/);
+  assert.equal(traces[1]?.tool, 'search_documents', 'auto searches the Space before the first model turn (after the memory recall)');
+  assert.match(traces[1]?.reason ?? '', /mode=auto/);
   assert.ok(sourcesOf(frames).some((s) => s.kind === 'doc'), 'and it produced a doc source');
 });
 
@@ -219,8 +220,8 @@ test('search_documents with no Space is a visible failed step, and the answer ci
   const step = tracesOf(frames).find((t) => t.tool === 'search_documents');
   assert.ok(step, 'the attempt is in the trace');
   assert.equal(step!.ok, false);
-  const traceFrame = frames.find((f) => f.event === 'trace')!.data as { error?: string };
-  assert.match(traceFrame.error ?? '', /no Space is attached/);
+  const failed = frames.find((f) => f.event === 'trace' && (f.data as { tool: string }).tool === 'search_documents')!.data as { error?: string };
+  assert.match(failed.error ?? '', /no Space is attached/);
 
   assert.deepEqual(sourcesOf(frames), [], 'nothing is citable');
   const answer = frames

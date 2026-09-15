@@ -12,3 +12,4 @@ reports/
 # deploy artefacts (Vercel link + prebuilt static UI copy)
 .vercel/
 deploy/web/
+runs.local-*/

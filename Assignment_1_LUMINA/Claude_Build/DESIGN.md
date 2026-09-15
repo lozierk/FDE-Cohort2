@@ -1,10 +1,13 @@
 # DESIGN.md — LUMINA (Claude build)
 
-> v1.3, 2026-09-14. Drafted 2026-09-09 as v0.1; the two open trade-offs (LLM provider, worker
+> v1.4, 2026-09-14. Drafted 2026-09-09 as v0.1; the two open trade-offs (LLM provider, worker
 > placement) were decided by Kurt on 2026-09-11 as v1.0. v1.1 updates the design to match the
 > week 2 build: Spaces, ingest, hybrid retrieval, and deep search are now running. v1.2 applies
 > the docs-mode preflight rule to web mode (Kurt, 2026-09-14); v1.3 adds Sonnet 5 for the deep
-> answer only, trade-off 9. The five graded headings below are read by `eval/build-report.mjs`.
+> answer only, trade-off 9; v1.4, after the first full bench: the fresh-thread gate on the
+> preflight becomes a standalone-question check, memory recall becomes the loop's own first
+> step, memory requests keep their model turn, and Tavily raw content is cleaned of markdown
+> before a snippet is chosen. The five graded headings below are read by `eval/build-report.mjs`.
 
 ## Components
 
@@ -88,6 +91,53 @@ workload repeated, the bench's p95 lands on a cold query, so we expect about 3 s
 2.5 s gate, and the miss is documented on `/evals` rather than bought with a looser cap. Under
 the threshold — one page of text, or none — the model keeps its turn, to fetch or reformulate.
 Follow-ups keep theirs too, and deep sub-questions always do.
+
+"Fresh thread" turned out to be the wrong gate. The first full bench (2026-09-14 evening) sends
+all 40 web queries down one thread, so 39 of them took the research turn: TTFT p95 12.8 s, the
+answer p95 15.0 s, and a 10% search cache hit rate because the model rephrased every search.
+The rule is now "fresh thread, or a question that stands on its own" (`loop/standalone.ts`):
+fewer than four words, a continuation opener ("And …", "What about …"), or a pronoun in the
+opening words or as the last word marks a follow-up, and everything else preflights on the
+user's words. A wrong "standalone" costs one search and some off-topic passages next to the
+history the synthesis always sees; a wrong "follow-up" costs the model turn every follow-up paid
+before. All 20 bench questions pass the check, pronouns in the middle included; the twelve
+follow-up shapes in `test/standalone.test.ts` do not. The lesson: measure with the grader's
+harness, not only your own — `ask.py` opened a thread per question, and the bench does not.
+
+The same bench failed every memory gate, for the mirror-image reason: the fast path takes the
+model's turn away, and `save_memory` and `recall_memory` were tools only a model turn could
+call. Two changes. An instruction about the user ("Remember this preference for all future
+answers: …", `looksLikeMemoryRequest`) is not searched and keeps its model turn, which is
+offered `save_memory`. And every quick run now recalls memory as its FIRST step, a real
+`recall_memory` trace step the loop makes itself (one embedding, one Mongo scan, about
+100 ms), whose lines go into the synthesis system prompt — so a preference saved in one thread
+reaches the answer in the next without a model turn spent asking for it. A side effect worth
+naming: the stream now always opens with that trace, so a model-provider failure on the first
+call surfaces as the stream's `error` event rather than a 502 response.
+
+Citation grounding was the third miss (0.913, gate 0.95), and the audit
+(`scripts-local/grounding-audit.mjs`, which re-scores stored answers with the bench's own
+matcher) put the failures in three bins. Nine snippets began with markdown the grader's
+tag-stripped HTML never contains — `[Previous](/learn/bm25)`, `![](…)`, `# Heading` — because
+Tavily's raw content is markdown; `cleanRawContent` in the provider now keeps the link text
+and drops the syntax. Four were YouTube pages, whose "text" is a transcript the HTML does not
+carry; video and login-walled hosts are no longer citable sources. The rest were short
+snippets with one token the page serves as an entity (`isn&rsquo;t`), so `SNIPPET_MIN` rose
+from 40 to 160 characters to leave a clean 12-token run on one side of any such token.
+
+Two more from the third bench. The search cache holds results for six hours, so a cleaning
+that lives only in the provider does nothing for a cached row: the web-search tool cleans
+again as it registers a result. And a rendered formula is text we were given but never text
+the grader's tag-stripper produces, so the passage chooser skips any sentence with more than
+8% of its characters outside plain prose (`looksLikeMarkup`). The gateway had its own defect:
+it mirrored the agent's bodiless 204 on DELETE /memory/:id as a "non-JSON body" 502, which
+failed all three memory gates on a save and a recall that had in fact worked.
+
+The remaining TTFT outliers were the queries whose search extracted text for fewer than two
+results: the model's turn went one way every time (fetch the unread page), at 7.9 and 8.9 s
+against 0.7 s for the other 38. The loop now fetches up to `WEB_PREFLIGHT_FETCHES` (2) such
+results itself, as visible `fetch_page` steps, and skips the turn once the threshold is met;
+a failed fetch is a failed step and the model keeps its turn as before.
 
 Deep search sends its `plan` frame as the first paint, before any retrieval. The planner prompt
 is deliberately terse — fifteen-word questions, six-word reasons — because output tokens are the

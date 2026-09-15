@@ -1,11 +1,13 @@
 import { TraceEvent, type AskMode, type ToolName } from '@lumina/contract';
 import type { Logger } from 'pino';
+import { env } from '../env.js';
 import { scrub } from '../log.js';
 import { llmCostUsd, MAX_TOKENS, type TokenUsage } from '../config/model.js';
 import type { ContentBlock, LlmMessage, LlmProvider, ToolDefinition, ToolResultBlock, ToolUseBlock } from '../providers/llm.js';
 import type { Providers } from '../providers/index.js';
 import { TOOLS_BY_NAME } from '../tools/index.js';
 import type { Tool, ToolContext } from '../tools/types.js';
+import { runWithDeadline } from '../tools/with-deadline.js';
 import { citableNumbersNotice } from './prompts.js';
 import type { SourceRegistry } from './sources.js';
 
@@ -101,6 +103,8 @@ export interface ResearchResult {
 
 type ToolResult0 = { ok: true; content: string } | { ok: false; error: string };
 
+const RETRIEVAL_TOOLS = new Set(['web_search', 'fetch_page', 'search_documents']);
+
 export async function runResearch(input: ResearchInput): Promise<ResearchResult> {
   const { budget, ctx, registry } = input;
   const mine: RunToolCall[] = [];
@@ -121,8 +125,12 @@ export async function runResearch(input: ResearchInput): Promise<ResearchResult>
       result = { ok: false, error: `unknown tool: ${name}` };
     } else {
       try {
-        const r = await tool.run(args, ctx);
-        result = r.ok ? { ok: true, content: r.content } : { ok: false, error: scrub(r.error) };
+        const r = await runWithDeadline(tool, args, ctx, env.toolTimeoutMs);
+        // Retrieved text is data, never instructions: the same boundary the synthesis prompt
+        // draws (`untrustedSource` in prompts.ts), applied where the model first reads it.
+        result = r.ok
+          ? { ok: true, content: RETRIEVAL_TOOLS.has(tool.name) ? `<untrusted_source tool="${tool.name}">\n${r.content}\n</untrusted_source>` : r.content }
+          : { ok: false, error: scrub(r.error) };
       } catch (err) {
         // A tool that throws is a visible failed step, not a swallowed empty result. The run
         // continues; the synthesis prompt is told what it does and does not have.

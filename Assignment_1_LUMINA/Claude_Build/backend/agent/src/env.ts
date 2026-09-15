@@ -73,6 +73,16 @@ export const env = {
   maxToolCallsDeep: num(process.env.MAX_TOOL_CALLS_DEEP, 24),
   maxWallClockSecDeep: num(process.env.MAX_WALL_CLOCK_SEC_DEEP, 240),
 
+  /** Per-call backstop around every `tool.run`. `fetch_page` keeps its own tighter 8 s timeout. */
+  toolTimeoutMs: num(process.env.TOOL_TIMEOUT_MS, 20_000),
+
+  /** The Anthropic client's own request timeout; the SDK's 10-minute default is too loose for a live answer. */
+  llmRequestTimeoutMs: num(process.env.LLM_REQUEST_TIMEOUT_MS, 120_000),
+  /** Our own bounded retry loop replaces the SDK's silent retries (maxRetries: 0 on the client). */
+  llmMaxRetries: num(process.env.LLM_MAX_RETRIES, 2),
+  /** Cap on any single retry wait, including one driven by a provider `retry-after` header. */
+  llmRetryMaxWaitMs: num(process.env.LLM_RETRY_MAX_WAIT_MS, 2_000),
+
   /**
    * `child`: index.ts forks the jobs worker at boot (DESIGN.md trade-off 3, one deploy).
    * `none`: it does not — what tests use, and what a two-process deploy uses alongside

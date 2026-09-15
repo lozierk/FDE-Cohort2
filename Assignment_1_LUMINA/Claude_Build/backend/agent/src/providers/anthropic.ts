@@ -1,4 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
+import type { Logger } from 'pino';
+import { env } from '../env.js';
+import { withLlmRetry } from './llm-retry.js';
 import type { LlmEvent, LlmProvider, LlmRequest } from './llm.js';
 
 /**
@@ -10,6 +13,12 @@ import type { LlmEvent, LlmProvider, LlmRequest } from './llm.js';
  * definition, which is the whole stable prefix (tools render before system before messages).
  * Across a multi-step loop that prefix is resent on every call, so the cache is most of the
  * saving — see `usage.cache_read_input_tokens` in the `done` event's costUsd.
+ *
+ * `maxRetries: 0` and an explicit `timeout` turn off the SDK's own silent retries (which sleep
+ * on `retry-after` INSIDE the streaming call, with a 10-minute default timeout — a first-token
+ * latency we do not control). `complete()` runs its own bounded, abortable retry instead, and
+ * only until the FIRST event arrives: once any event has been yielded, a retry would replay
+ * output the caller already has, so `withLlmRetry` never wraps anything past that point.
  */
 export class AnthropicLlm implements LlmProvider {
   readonly name = 'anthropic';
@@ -17,9 +26,10 @@ export class AnthropicLlm implements LlmProvider {
 
   constructor(
     apiKey: string,
-    readonly model: string
+    readonly model: string,
+    private readonly log?: Logger
   ) {
-    this.client = new Anthropic({ apiKey });
+    this.client = new Anthropic({ apiKey, maxRetries: 0, timeout: env.llmRequestTimeoutMs });
   }
 
   async *complete(req: LlmRequest): AsyncIterable<LlmEvent> {
@@ -30,17 +40,42 @@ export class AnthropicLlm implements LlmProvider {
       ...(i === req.tools!.length - 1 ? { cache_control: { type: 'ephemeral' as const } } : {})
     }));
 
-    const stream = this.client.messages.stream(
-      {
-        model: this.model,
-        max_tokens: req.maxTokens,
-        system: [{ type: 'text', text: req.system, cache_control: { type: 'ephemeral' } }],
-        messages: req.messages as unknown as Anthropic.MessageParam[],
-        ...(tools?.length ? { tools } : {}),
-        ...(req.toolChoice ? { tool_choice: { type: 'tool' as const, name: req.toolChoice.name } } : {})
+    // The SDK's `messages.stream()` returns synchronously; a 429/529/connection failure only
+    // surfaces when the first event is awaited. So the retry boundary is "obtain the first
+    // event": that is the latest point at which nothing has reached the caller yet.
+    const { iterator, first } = await withLlmRetry(
+      async () => {
+        const stream = this.client.messages.stream(
+          {
+            model: this.model,
+            max_tokens: req.maxTokens,
+            system: [{ type: 'text', text: req.system, cache_control: { type: 'ephemeral' } }],
+            messages: req.messages as unknown as Anthropic.MessageParam[],
+            ...(tools?.length ? { tools } : {}),
+            ...(req.toolChoice ? { tool_choice: { type: 'tool' as const, name: req.toolChoice.name } } : {})
+          },
+          { signal: req.signal }
+        );
+        const iterator = stream[Symbol.asyncIterator]();
+        const first = await iterator.next();
+        return { iterator, first };
       },
-      { signal: req.signal }
+      {
+        maxRetries: env.llmMaxRetries,
+        maxWaitMs: env.llmRetryMaxWaitMs,
+        signal: req.signal,
+        onRetry: ({ status, attempt, waitMs }) => this.log?.warn({ status, attempt, waitMs }, 'retrying Anthropic request')
+      }
     );
+    const events = (async function* () {
+      if (first.done) return;
+      yield first.value;
+      for (;;) {
+        const n = await iterator.next();
+        if (n.done) return;
+        yield n.value;
+      }
+    })();
 
     // Tool inputs arrive as a stream of JSON fragments; accumulate per block index and
     // JSON.parse at the end. Never string-match the serialized input.
@@ -48,7 +83,7 @@ export class AnthropicLlm implements LlmProvider {
     let stop: LlmEvent | null = null;
     const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
-    for await (const ev of stream) {
+    for await (const ev of events) {
       if (ev.type === 'message_start') {
         const u = ev.message.usage;
         usage.input += u.input_tokens ?? 0;

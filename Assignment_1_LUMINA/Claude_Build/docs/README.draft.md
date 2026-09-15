@@ -2,7 +2,7 @@
 
 Ask a question, get a streamed answer with citations you can click, drawn from a live web search and from your own documents.
 
-**Live:** [UI](https://lumina-claude.vercel.app) · [evals](https://lumina-claude.vercel.app/evals) · [gateway health](https://lumina-claude-gateway.fly.dev/health) · [repo](⟦REPO⟧)
+**Live:** [UI](https://lumina-claude.vercel.app) · [evals](https://lumina-claude.vercel.app/evals) · [gateway health](https://lumina-claude-gateway.fly.dev/health) · [repo](https://github.com/lozierk/Claude_Build_Submission)
 
 Assignment 1 of Hamza Farooq's Forward Deployed Engineering bootcamp, cohort 02. The React UI, the API contract, the benchmark, the grader and the gold set were provided. The two backend services are mine.
 
@@ -75,4 +75,4 @@ Tests run without Atlas: in `backend/agent`, `npm test` uses an in-memory Mongo 
 - Out of scope on purpose: no re-ranker, since recall@5 was already perfect on the gold set and a re-rank turn costs about 2 s for no measured gain. No subagent deep search. The OpenRouter A/B sits behind one module, deferred.
 - Known limit: auto mode with an answering Space returns documents, not the web; the UI toggle is the remedy.
 
-Built solo with Claude Code. Kurt Lozier, [LinkedIn](⟦LINKEDIN⟧).
+Built solo with Claude Code. Kurt Lozier, [LinkedIn](https://www.linkedin.com/in/kurtlozier/).

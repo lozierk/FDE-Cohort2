@@ -1,6 +1,6 @@
 # STATE — LUMINA (Assignment 1), Claude and Codex builds
 
-As of Claude close (CLAUDE-073, 2026-09-15 10:15 ET). Editor: unclaimed after explicit release (CLAUDE-073; Claude held the lease 10:12–10:15 ET for this refresh); claim before editing. Evidence IDs resolve in archive or messages.
+As of Claude session 11 (CLAUDE-074, 2026-09-15 11:04 ET). Editor: unclaimed after explicit release (Claude held the lease 2026-09-15 11:04 ET for the CLAUDE-074 refresh); claim before editing. Evidence IDs resolve in archive or messages.
 
 Both sessions closed. Latest Codex handoff: `Codex_Build/Resume_from_20260909_1333.md`; Claude: `Claude_Build/Resume_from_20260915_1009.md`. No active polling or automatic wake implied.
 
@@ -9,7 +9,7 @@ Both sessions closed. Latest Codex handoff: `Codex_Build/Resume_from_20260909_13
 - Participants (identity ≠ model ≠ session): `CLAUDE` agent, harness Claude Code, model label Claude Fable 5.1 · `CODEX` agent, harness Codex CLI, model label GPT-6-based (unverified snapshot, CODEX-031) · `KURT` human principal; verified channel = Telegram reply ingested by `shared/check_kurt_replies.sh`; terminal statements are relayed by the agent that heard them.
 
 ## Where we are
-**History (CLAUDE-063–072):** Claude solo in `Claude_Build/`, Codex paused (Kurt, 2026-09-11). DESIGN v1.0→v1.5 (Anthropic direct; **Haiku 4.5 everywhere, Sonnet 5 for the deep answer**, trade-off 9; auto mode with an answering Space takes the docs fast path, trade-off 10). Week 1+2 built and measured 2026-09-14; four local benches found four defects, fixed (`e8e0ed2`). **Deployed 2026-09-15 AM (CLAUDE-072):** UI https://lumina-claude.vercel.app, gateway https://lumina-claude-gateway.fly.dev, agent private on Fly; eval run 1: gates 0–3 pass, one 45 ms deep-plan miss at gate 4, stood on, automated 82/85 (`b947f90`). **2026-09-15 10:15 (CLAUDE-073): SUBMISSION COMPLETE.** Classmate (Saurabh) review exposed three gaps → 20 s tool deadline, explicit LLM retry (boundary = first stream event), untrusted-source boundary (tests 132/12); agent redeployed; **eval run 2: all gates pass, 16/16 SLA, automated 85/85**, P1 words in, repo link in; run 1 kept beside it. Public snapshot repo `lozierk/Claude_Build_Submission` (Q-16 settled, D-12 intact). Kurt: `sla.json`/`rules.json` untouched, run notes explain P2. **Open:** video, Notion, tell Saurabh. Deadline Fri 2026-09-18.
+**History (CLAUDE-063–072):** Claude solo in `Claude_Build/`, Codex paused (Kurt, 2026-09-11). DESIGN v1.0→v1.5 (Anthropic direct; **Haiku 4.5 everywhere, Sonnet 5 for the deep answer**, trade-off 9; auto mode with an answering Space takes the docs fast path, trade-off 10). Week 1+2 built and measured 2026-09-14; four local benches found four defects, fixed (`e8e0ed2`). **Deployed 2026-09-15 AM (CLAUDE-072):** UI https://lumina-claude.vercel.app, gateway https://lumina-claude-gateway.fly.dev, agent private on Fly; eval run 1: gates 0–3 pass, one 45 ms deep-plan miss at gate 4, stood on, automated 82/85 (`b947f90`). **2026-09-15 (CLAUDE-073): SUBMISSION COMPLETE.** A classmate review exposed 3 gaps → 20 s tool deadline, explicit LLM retry (boundary = first stream event), untrusted-source boundary (tests 132/12); redeployed; **eval run 2: all gates pass, 16/16 SLA, automated 85/85**, P1 words + repo link in; run 1 kept beside it. Public snapshot repo `lozierk/Claude_Build_Submission` (Q-16 settled, D-12 intact). Kurt: `sla.json`/`rules.json` untouched, P2 in run notes. **2026-09-15 (CLAUDE-074): SUBMITTED to Maven** (text `docs/SUBMISSION.md`). 3 classmate builds reviewed (`docs/reviews/`, private; ranking K>MO>SB>MS); Codex discoveries in `shared/CLAUDE_BUILD_DISCOVERIES_FOR_CODEX.md`. Verified live: verbatim repeat → `searchCached:true`; no `indexed` before the read-your-write probe. **Open, Kurt's:** video by Fri, maybe restart Codex after Fri (both optional). Deadline Fri 2026-09-18.
 
 ## Gates and approvals (data, not prose)
 - `trial_ceiling_usd: 10` · scope: LUMINA endpoint-validation trial only, all-in · approved_by KURT (relayed, CLAUDE-035; confirmed CODEX-041).
@@ -41,9 +41,9 @@ Both sessions closed. Latest Codex handoff: `Codex_Build/Resume_from_20260909_13
 - Closed: Q-1..Q-3, Q-7..Q-11 (archive registers); Q-12 starter copy (CODEX-066); Q-14 migration review, commit cleared (CODEX-067)
 
 ## Pending work
-- Claude: submission complete, 85/85 automated, all gates pass, public snapshot up. Nothing blocked. If Kurt adds a video or edits: `scripts-local/finish-report.sh` → Kurt deploys the gateway → `assemble-public.sh` → push. Resume: `Claude_Build/Resume_from_20260915_1009.md`.
+- Claude: **submitted to Maven 2026-09-15**, 85/85, all gates pass, snapshot up, 3 reviews + ranking (`docs/reviews/`). Nothing blocked. Video/edit path: `finish-report.sh` → Kurt deploys gateway (`!`) → `assemble-public.sh` → push. **Re-run `eval.mjs --deploy-url` AM Fri 2026-09-18 before final.** Resume: `Claude_Build/Resume_from_20260915_1009.md`.
 - Codex: contract/grader review; DESIGN.md draft; red-team of Claude's DESIGN (Q-10 file names).
-- Kurt: video (optional); Notion refresh (optional); whether to pass feedback to Saurabh; Codex's scope after Friday (Claude recommends: paused). Done 2026-09-15: logins, secrets import, favicon kit, two agent deploys, gateway deploy, repo flip to public, P1 words approved.
+- Kurt: **video by Fri (optional)**; **maybe restart Codex after Fri (optional, uncommitted)**; classmate feedback deferred to office hours. Done 2026-09-15: submitted to Maven, Notion refreshed, office-hours brief, 3 reviews + ranking, 2 live verifications (CLAUDE-074).
 
 ## Checkpoints
 See `board/MANIFEST.md`: archive SHA-256, highest legacy IDs (CLAUDE 054, CODEX 064), read checkpoints at cutover, receipts empty at cutover.

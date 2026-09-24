@@ -2,7 +2,8 @@
 # Assemble the public submission snapshot of Claude_Build into $OUT (no push; push by hand).
 # Re-runnable: every run rebuilds the tree from the tracked file list and commits the delta.
 # Excludes: session resumes, classmate/peer reviews, the pending-notes file, Kurt's setup
-# checklist, the README draft (it becomes README.md). Adds reports/latest.json (git-ignored here).
+# checklist, the README draft (it becomes README.md). reports/ stays out of the public repo
+# (reviewer feedback 2026-09-24): the live /evals page is the served evidence.
 set -euo pipefail
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="${OUT:-/private/tmp/claude-501/-Users-kurtlozier-Learning-Hamza-Cohort-02-Forward-Deployed-Engineering-Bootcamp-Assignment-1-LUMINA/b58e47ce-3fdf-4551-b320-57abf7d0a8a8/scratchpad/pubrepo}"
@@ -19,7 +20,5 @@ git ls-files . \
   | rsync -a --files-from=- ./ "$OUT/"
 cp README.md "$OUT/docs/STARTER_README.md"
 cp docs/README.draft.md "$OUT/README.md"
-mkdir -p "$OUT/reports"; cp reports/latest.json "$OUT/reports/latest.json"
-printf '\n# public snapshot: the served report is evidence, keep it\n!reports/\nreports/*\n!reports/latest.json\n' >> "$OUT/.gitignore"
 cd "$OUT" && git add -A && (git diff --cached --quiet && echo "no changes" || git commit -q -m "$MSG") && git log --oneline -1 && echo "files: $(git ls-files | wc -l)"
 echo "push by hand: cd $OUT && git push -u origin main"

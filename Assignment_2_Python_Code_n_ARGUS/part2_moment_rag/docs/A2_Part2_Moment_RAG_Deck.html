@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Moment RAG vs Chunk RAG</title>
+<style>
+  :root{
+    --paper:#ffffff;
+    --ink:#15212f;
+    --ink2:#3d4a5a;
+    --mute:#5f6b7a;
+    --faint:#8a95a3;
+    --line:#e3e8ef;
+    --line2:#c9d6e5;
+    --navy:#2c4a6e;
+    --accent:#7fb3e0;
+    --muted:#c9d6e5;
+    --tint:#f3f6fa;
+    --band:#eef3f8;
+    --lessonrule:#b8c6d6;
+    --grid:#e8edf3;
+    --axis:#b3bfcc;
+    --win:#2c4a6e;
+    --font:"Helvetica Neue",Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{background:#eef1f5;color:var(--ink);font-family:var(--font);overflow:hidden;-webkit-font-smoothing:antialiased}
+  #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+  #canvas{width:1280px;height:720px;position:relative;transform-origin:center center;background:var(--paper);counter-reset:slide}
+  .slide{position:absolute;inset:0;padding:48px 68px 40px 68px;display:none;flex-direction:column;background:var(--paper);counter-increment:slide}
+  .slide.on{display:flex}
+  .slide::after{content:counter(slide);position:absolute;right:68px;bottom:16px;font-size:11px;color:var(--faint);font-variant-numeric:tabular-nums}
+  .slide::before{content:"";position:absolute;left:0;top:0;bottom:0;width:6px;background:var(--navy)}
+
+  .kicker{display:flex;align-items:center;gap:14px;font-size:12.5px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--navy);margin-bottom:14px}
+  .kicker::before{content:"";width:28px;height:3px;background:var(--accent);flex:none}
+  h1.head{font-size:34px;line-height:1.2;font-weight:500;letter-spacing:-.4px;max-width:1120px;color:var(--ink)}
+  h1.head .hl{color:var(--navy);font-weight:700}
+  .sub{margin-top:10px;font-size:16px;line-height:1.5;color:var(--mute);max-width:1080px}
+  .body{margin-top:20px;padding-top:20px;border-top:1px solid var(--line);flex:1;min-height:0;display:flex;flex-direction:column;gap:18px}
+
+  ul.pts{list-style:none;display:flex;flex-direction:column;gap:11px}
+  ul.pts li{font-size:18px;line-height:1.4;padding-left:22px;position:relative;color:var(--ink)}
+  ul.pts li::before{content:"";position:absolute;left:0;top:9px;width:7px;height:7px;background:var(--navy)}
+  ul.pts li span{color:var(--mute)}
+  ul.sm li{font-size:15.5px}
+  ul.sm li::before{top:8px;width:6px;height:6px}
+
+  .cols{display:flex;gap:36px;flex:1;min-height:0}
+  .col{flex:1;display:flex;flex-direction:column;gap:10px;border-top:3px solid var(--muted);padding-top:14px;min-width:0}
+  .col.nv{border-top-color:var(--navy)}
+  .col h3{font-size:18px;font-weight:700;line-height:1.25;color:var(--ink)}
+  .col .lede{font-size:13.5px;color:var(--mute);line-height:1.45}
+
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:28px}
+  .card{display:flex;flex-direction:column;gap:8px;border-top:3px solid var(--navy);padding-top:13px}
+  .card.lt{border-top-color:var(--accent)}
+  .card .tag{font-size:11.5px;color:var(--navy);font-weight:700;letter-spacing:.6px;text-transform:uppercase}
+  .card h4{font-size:17px;font-weight:700;line-height:1.3;color:var(--ink)}
+  .card p{font-size:14px;line-height:1.45;color:var(--ink2)}
+  .card .nums{font-size:13px;color:var(--mute);font-variant-numeric:tabular-nums;margin-top:auto}
+  .card .nums b{color:var(--ink)}
+
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:24px}
+  .tile{border-top:3px solid var(--muted);padding-top:11px}
+  .tile .val{font-size:30px;font-weight:500;letter-spacing:-.5px;line-height:1.05;color:var(--navy)}
+  .tile .val small{font-size:15px;color:var(--mute);letter-spacing:0}
+  .tile .lbl{font-size:12.5px;color:var(--mute);margin-top:6px;line-height:1.35}
+
+  .callout{border-left:3px solid var(--accent);background:var(--tint);padding:10px 16px;font-size:14.5px;line-height:1.5;color:var(--ink2)}
+  .callout b{color:var(--ink)}
+
+  .flow{display:flex;align-items:stretch}
+  .step{flex:1;display:flex;flex-direction:column;gap:6px;border-top:3px solid var(--muted);padding-top:11px;min-width:0}
+  .step.nv{border-top-color:var(--navy)}
+  .step .n{font-size:11px;color:var(--navy);font-weight:700;letter-spacing:.6px;text-transform:uppercase}
+  .step h5{font-size:15.5px;font-weight:700;color:var(--ink)}
+  .step p{font-size:13px;line-height:1.45;color:var(--ink2)}
+  .arrow{display:flex;align-items:center;justify-content:center;width:28px;color:var(--line2);font-size:18px;flex:none}
+
+  table.data{width:100%;border-collapse:collapse;font-size:14px}
+  table.data th{text-align:left;font-size:11.5px;color:var(--mute);font-weight:700;letter-spacing:.3px;text-transform:uppercase;padding:0 14px 8px 0;border-bottom:2px solid var(--navy)}
+  table.data td{padding:8px 14px 8px 0;border-bottom:1px solid var(--line);vertical-align:top;line-height:1.38;color:var(--ink2)}
+  table.data td b{color:var(--ink)}
+  table.data td.num, table.data th.num{text-align:right;font-variant-numeric:tabular-nums}
+  table.data td.num{color:var(--ink)}
+  table.data td.w{font-weight:700;color:var(--navy)}
+  table.data tr.hi td{background:var(--tint)}
+  table.data .m{color:var(--mute);font-size:12.5px}
+  table.lg{font-size:16px}
+  table.lg td{padding-top:12px;padding-bottom:12px}
+  table.lg th{font-size:12.5px}
+  .callout.lg{font-size:16px;padding:14px 18px}
+  table.tight td{padding-top:6px;padding-bottom:6px}
+
+  .foot{margin-top:auto;padding-top:10px;font-size:11.5px;color:var(--faint);border-top:1px solid var(--line);padding-right:40px}
+
+  .ans{flex:1;display:flex;flex-direction:column;gap:8px;min-width:0}
+  .ans .meta{display:flex;gap:18px;font-size:12.5px;color:var(--mute);font-variant-numeric:tabular-nums;flex-wrap:wrap}
+  .ans .meta b{color:var(--ink)}
+  .ans blockquote{font-size:14px;line-height:1.5;color:var(--ink2);background:var(--tint);padding:12px 16px;border-left:3px solid var(--muted)}
+  .ans.nv blockquote{border-left-color:var(--navy)}
+
+  /* title slide */
+  .title-wrap{flex:1;display:flex;flex-direction:column;justify-content:center}
+  .title-wrap h1{font-size:52px;line-height:1.1;font-weight:500;letter-spacing:-1px;max-width:1080px;color:var(--ink)}
+  .title-wrap h1 em{font-style:normal;color:var(--navy);font-weight:700}
+  .title-wrap .tag{font-size:19px;color:var(--mute);margin-top:20px;max-width:900px;line-height:1.5}
+  .byline{margin-top:30px;font-size:15px;color:var(--ink)}
+  .byline span{color:var(--mute)}
+  .strip{display:flex;margin-top:34px;padding-top:22px;border-top:2px solid var(--navy)}
+  .strip div{flex:1;padding-left:26px;border-left:1px solid var(--line)}
+  .strip div:first-child{padding-left:0;border-left:0}
+  .strip .v{font-size:28px;font-weight:500;color:var(--navy);letter-spacing:-.4px}
+  .strip .k{font-size:12px;color:var(--mute);margin-top:6px;line-height:1.35}
+
+  /* chart */
+  .chart{display:flex;flex-direction:column;gap:6px}
+  .legend{display:flex;gap:22px;font-size:12.5px;color:var(--ink2);align-items:center;flex-wrap:wrap}
+  .legend i{display:inline-block;vertical-align:middle;margin-right:7px}
+  .legend .k-line{width:20px;height:2px;background:#3a6ea5}
+  .legend .k-dot{width:10px;height:10px;border-radius:50%;background:#c8741f}
+  .legend .k-tri{width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:11px solid #2a9d8f}
+  .legend .k-band{width:14px;height:12px;background:var(--band);border-left:1px solid var(--lessonrule)}
+  .chart svg{display:block;width:100%;height:auto}
+  .chart svg circle:hover{r:7}
+  .chart svg rect.band:hover{fill:#e2eaf3}
+  .chart .cap{font-size:12.5px;color:var(--mute)}
+
+  /* chrome */
+  #bar{position:fixed;left:0;bottom:0;height:3px;background:var(--navy);width:0;transition:width .18s ease;z-index:5}
+  #count{position:fixed;right:20px;bottom:12px;font-size:12px;color:var(--faint);z-index:5;font-variant-numeric:tabular-nums}
+  #hint{position:fixed;left:20px;bottom:12px;font-size:11px;color:#a9b2bd;z-index:5}
+  #notes{position:fixed;left:0;right:0;bottom:0;max-height:42vh;overflow:auto;background:#fbfbfa;border-top:1px solid var(--line2);padding:18px 26px 24px;font-size:14px;line-height:1.6;color:var(--ink2);display:none;z-index:6}
+  #notes.on{display:block}
+  #notes h6{font-size:12px;color:var(--navy);margin-bottom:8px;font-weight:700}
+  .notes{display:none}
+
+  @page{size:1280px 720px;margin:0}
+  @media print{
+    html,body{height:auto;overflow:visible;background:#fff}
+    #stage{position:static;display:block}
+    #canvas{transform:none !important;width:1280px;height:auto;background:none}
+    .slide{display:flex !important;position:relative;inset:auto;width:1280px;height:720px;overflow:hidden;break-after:page;page-break-after:always}
+    .slide:last-child{break-after:auto;page-break-after:auto}
+    #bar,#count,#hint,#notes{display:none !important}
+    *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  }
+</style>
+</head>
+<body>
+<div id="stage"><div id="canvas">
+
+<!-- 1 TITLE -->
+<section class="slide on">
+  <div class="title-wrap">
+    <div class="kicker">Assignment 2, Part 2 · Hamza's FDE Bootcamp, Cohort 2</div>
+    <h1>Moment RAG vs Chunk RAG<br/>on McRaven's <em>"Make Your Bed"</em></h1>
+    <div class="tag">Same transcript, same embedder, same answer model, same 12 questions. The only variable is the retrieval unit: fixed chunks or semantic moments.</div>
+    <div class="byline"><b>Kurt Lozier</b> <span>· September 25, 2026 · Option 1: Brief Presentation</span></div>
+    <div class="strip">
+      <div><div class="v">4.58 vs 4.58</div><div class="k">answer quality, moment vs baseline<br/>LLM judge (Haiku), not human</div></div>
+      <div><div class="v">0.71 vs 0.52</div><div class="k">context purity: share of retrieved<br/>words inside the right lesson</div></div>
+      <div><div class="v">921 vs 1202</div><div class="k">mean context tokens per question<br/>(23% fewer)</div></div>
+      <div><div class="v">$0.0043 vs $0.0054</div><div class="k">answer cost per question<br/>(20% lower)</div></div>
+    </div>
+  </div>
+  <div class="notes">One idea: hold everything constant except the retrieval unit, then score both pipelines on the same golden set. All numbers come from reports/scorecard.md (v3 run, 2026-09-25).</div>
+</section>
+
+<!-- 2 OVERVIEW -->
+<section class="slide">
+  <div class="kicker">Overview</div>
+  <h1 class="head">After three versions, Moment RAG <span class="hl">ties the baseline on answers</span> and wins on context size and purity.</h1>
+  <div class="body">
+    <div class="grid3">
+      <div class="card lt">
+        <div class="tag">v1 · drift only</div>
+        <h4>Embedding drift sets boundaries</h4>
+        <p>Haiku may only merge. Stories split from their morals.</p>
+        <div class="nums">boundary score <b>0.60</b> · purity <b>0.32</b> · judge <b>4.42</b></div>
+      </div>
+      <div class="card lt">
+        <div class="tag">v2 · LLM-bounded</div>
+        <h4>Haiku moves boundaries ±3 sentences</h4>
+        <p>Split and merge allowed. Story and moral rejoin.</p>
+        <div class="nums">boundary score <b>0.90</b> · purity <b>0.37</b> · judge <b>4.67</b></div>
+      </div>
+      <div class="card">
+        <div class="tag">v3 · adaptive k</div>
+        <h4>Keep extra moments only when they score near the top</h4>
+        <p>1.92 moments per question instead of 3.</p>
+        <div class="nums">boundary score <b>0.90</b> · purity <b>0.71</b> · judge <b>4.58</b></div>
+      </div>
+    </div>
+    <table class="data">
+      <tr><th>v3 result</th><th class="num">baseline</th><th class="num">moment</th><th>read</th></tr>
+      <tr><td>Answer quality · LLM judge (Haiku), not human, 1–5</td><td class="num">4.58</td><td class="num">4.58</td><td>tie</td></tr>
+      <tr><td>Citation accuracy</td><td class="num">0.93</td><td class="num">0.92</td><td>tie</td></tr>
+      <tr><td>Context purity · context tokens · answer cost</td><td class="num">0.52 · 1202 · $0.0054</td><td class="num">0.71 · 921 · $0.0043</td><td class="w">moment</td></tr>
+      <tr><td>Lesson recall</td><td class="num">0.94</td><td class="num">0.83</td><td class="w">baseline</td></tr>
+    </table>
+  </div>
+  <div class="notes">Scan-first summary. v1 to v2 fixed boundaries (0.60 to 0.90 lesson starts within 10 s of a moment start). v2 to v3 fixed context bloat (purity 0.37 to 0.71, tokens 1447 to 921). Recall stayed at 0.83 in every version; that is the open gap.</div>
+</section>
+
+<!-- 3 VIDEO -->
+<section class="slide">
+  <div class="kicker">1 · The video and why</div>
+  <h1 class="head">A talk with <span class="hl">ten numbered lessons</span> gives moment boundaries an objective answer key.</h1>
+  <div class="body">
+    <div class="tiles">
+      <div class="tile"><div class="val">19.4 <small>min</small></div><div class="lbl">Adm. William H. McRaven, UT Austin commencement, 2014 (YouTube yaQZFhrW0fU)</div></div>
+      <div class="tile"><div class="val">281</div><div class="lbl">manual English caption segments, about 3,200 words</div></div>
+      <div class="tile"><div class="val">196</div><div class="lbl">sentences after splitting: the unit both pipelines share</div></div>
+      <div class="tile"><div class="val">10</div><div class="lbl">lessons, each closed by "if you want to change the world ..."</div></div>
+    </div>
+    <div class="cols">
+      <div class="col nv">
+        <h3>Why this video</h3>
+        <ul class="pts sm">
+          <li>The refrain marks where each lesson ends.</li>
+          <li><b>ground_truth.py</b> finds all ten refrains; starts hand-checked.</li>
+          <li>A lesson runs from its story's first sentence to its refrain.</li>
+          <li>Boundaries get a score, not an eyeball.</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h3>Ground truth · data/lessons.json</h3>
+        <table class="data tight" style="font-size:13px">
+          <tr><th>#</th><th>lesson</th><th class="num">start</th><th>#</th><th>lesson</th><th class="num">start</th></tr>
+          <tr><td>1</td><td>Make your bed</td><td class="num">4:44</td><td>6</td><td>Slide down head first</td><td class="num">11:30</td></tr>
+          <tr><td>2</td><td>Find help to paddle</td><td class="num">6:13</td><td>7</td><td>Don't back down from sharks</td><td class="num">12:52</td></tr>
+          <tr><td>3</td><td>Size of their heart</td><td class="num">7:20</td><td>8</td><td>Best in the darkest moment</td><td class="num">14:02</td></tr>
+          <tr><td>4</td><td>Sugar cookie</td><td class="num">8:38</td><td>9</td><td>Sing in the mud</td><td class="num">15:38</td></tr>
+          <tr><td>5</td><td>Circuses</td><td class="num">10:05</td><td>10</td><td>Never ring the bell</td><td class="num">17:50</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="notes">Most talks have no objective topic boundaries, so moment quality becomes a matter of taste. This one announces ten lessons and closes each with the same refrain, so data/lessons.json is a real answer key for both boundaries and retrieval.</div>
+</section>
+
+<!-- 4 REFERENCE CODEBASE -->
+<section class="slide">
+  <div class="kicker">2 · The reference Moment RAG codebase</div>
+  <h1 class="head">The reference <span class="hl">builds moments at query time</span>; this build persists them once at ingest.</h1>
+  <div class="body">
+    <table class="data lg">
+      <tr><th style="width:190px"></th><th>Reference codebase (MomentSearch)</th><th>This build</th></tr>
+      <tr><td><b>What a moment is</b></td><td>Not stored. A transient group of hits.</td><td>A stored span with title and summary.</td></tr>
+      <tr><td><b>How it forms</b></td><td>Frame hit + transcript hit within a 15 s fusion window</td><td>Embedding drift, then one Haiku refine-and-label pass</td></tr>
+      <tr><td><b>LLM at ingest</b></td><td>None. Fetch, sample frames, CLIP and bge embeddings.</td><td>One Haiku call for the whole video</td></tr>
+      <tr><td><b>Retrieval</b></td><td>RRF (k=60) over frame and text branches; ×1.5 cross-modal boost; top 6</td><td>RRF (k=60) over summary and full-text collections; adaptive k ≤ 3</td></tr>
+      <tr><td><b>LLM at query</b></td><td>One cited answer; abstains below a confidence gate</td><td>One cited answer (Sonnet), same as the baseline</td></tr>
+      <tr><td><b>Eval pattern</b></td><td>Fixed golden set, recall@10, human citation sheet</td><td>Fixed golden set, swap only the retrieval layer</td></tr>
+    </table>
+    <div class="callout lg"><b>Write path vs read path.</b> The reference spends its moment work on every query. This build moves all of it to ingestion, so the query path costs the same as chunk RAG.</div>
+  </div>
+  <div class="foot">Source: docs/recon/recon_momentsearch.md (search.py _fuse, FUSION_WINDOW_S = 15; ingest pipeline.py; eval/golden_set.json)</div>
+  <div class="notes">In the reference, a moment is an anchor point plus a 15 s proximity window used only for grouping hits; nothing persists. It uses no LLM at ingest. I kept its RRF and its eval discipline and changed where the moment is built.</div>
+</section>
+
+<!-- 5 BASELINE -->
+<section class="slide">
+  <div class="kicker">3 · Baseline implementation</div>
+  <h1 class="head">The baseline cuts <span class="hl">fixed 120-word chunks</span> and ignores sentence and story boundaries.</h1>
+  <div class="body">
+    <div class="flow">
+      <div class="step"><div class="n">Chunk</div><h5>120 words, 30 overlap</h5><p>Cut over the sentence stream, blind to sentences. 36 chunks.</p></div>
+      <div class="arrow">→</div>
+      <div class="step"><div class="n">Embed</div><h5>all-MiniLM-L6-v2</h5><p>Local sentence-transformers model, shared with the moment side.</p></div>
+      <div class="arrow">→</div>
+      <div class="step"><div class="n">Store</div><h5>Chroma, local</h5><p>Collection baseline_chunks with start, end, idx.</p></div>
+      <div class="arrow">→</div>
+      <div class="step"><div class="n">Retrieve</div><h5>Top 5 by cosine</h5><p>One question embedding, one lookup.</p></div>
+      <div class="arrow">→</div>
+      <div class="step nv"><div class="n">Answer</div><h5>claude-sonnet-5</h5><p>Chunks in time order, each prefixed [n] (mm:ss–mm:ss).</p></div>
+    </div>
+    <div class="cols">
+      <div class="col nv">
+        <h3>Answer rules, shared by both pipelines</h3>
+        <ul class="pts sm">
+          <li>Cite every claim with <b>[n]</b> and a timestamp.</li>
+          <li>No outside knowledge; the excerpts only.</li>
+          <li>Every call logs tokens, seconds and dollars.</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h3>The designed weakness</h3>
+        <ul class="pts sm">
+          <li>Lessons run about 300 words, chunks 120.</li>
+          <li>A lesson's story and its moral land in different chunks.</li>
+          <li>Top 5 buys coverage with off-topic words.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="foot">Source: README.md "Pipelines"; DESIGN.md "Baseline"</div>
+  <div class="notes">The baseline is deliberately a fair, ordinary chunk RAG: the same embedder, store and answer model as the moment side. The chunker ignores sentence boundaries on purpose, because the point is to see what cutting mid-idea costs.</div>
+</section>
+
+<!-- 6 MOMENT PIPELINE -->
+<section class="slide">
+  <div class="kicker">4 · Moment RAG implementation</div>
+  <h1 class="head">Embedding drift proposes boundaries; <span class="hl">one Haiku pass</span> turns them into 14 labelled moments.</h1>
+  <div class="body" style="gap:14px">
+    <div class="flow">
+      <div class="step"><div class="n">Stage 1 · no LLM</div><h5>Drift candidates</h5><p>3-sentence windows; TextTiling depth &gt; mean + 0.5·std; min 6 sentences. 17 segments; 6 of 10 lesson starts within 10 s.</p></div>
+      <div class="arrow">→</div>
+      <div class="step nv"><div class="n">Stage 2 · one Haiku call</div><h5>Refine and label</h5><p>Move ≤ ±3 sentences, split, merge sparingly. Code validates; one retry. 14 moments; 9 of 10 starts (0.90).</p></div>
+      <div class="arrow">→</div>
+      <div class="step"><div class="n">Stage 3 · index</div><h5>Two collections</h5><p>moment_summaries (title + summary) and moment_text (full text).</p></div>
+    </div>
+    <div class="chart">
+      <div class="legend">
+        <span><i class="k-line"></i>similarity between neighbouring 3-sentence windows</span>
+        <span><i class="k-dot"></i>Stage 1 candidate boundary (16)</span>
+        <span><i class="k-tri"></i>final moment starts (after Haiku pass)</span>
+        <span><i class="k-band"></i>ground-truth lesson L1–L10</span>
+      </div>
+      <svg viewBox="0 0 1144 280" width="1144" height="280" role="img" aria-label="Drift series: similarity between neighbouring 3-sentence windows over the talk, with 16 Stage 1 candidate boundaries and the ten ground-truth lesson spans" font-family="Helvetica Neue,Helvetica,Arial,sans-serif">
+<rect class="band" x="311.7" y="40" width="80.5" height="192" fill="var(--band)"><title>Lesson 1: Make your bed (4:44–6:13)</title></rect>
+<line x1="310.7" x2="310.7" y1="34" y2="232" stroke="var(--lessonrule)" stroke-width="1"/>
+<text x="352.0" y="30" text-anchor="middle" font-size="11" fill="var(--ink2)" font-weight="700">L1</text>
+<rect class="band" x="394.2" y="40" width="60.4" height="192" fill="var(--band)"><title>Lesson 2: Find someone to help you paddle (6:13–7:20)</title></rect>
+<line x1="393.2" x2="393.2" y1="34" y2="232" stroke="var(--lessonrule)" stroke-width="1"/>
+<text x="424.4" y="30" text-anchor="middle" font-size="11" fill="var(--ink2)" font-weight="700">L2</text>
+<rect class="band" x="456.7" y="40" width="70.5" height="192" fill="var(--band)"><title>Lesson 3: Measure a person by the size of their heart (7:20–8:38)</title></rect>
+<line x1="455.7" x2="455.7" y1="34" y2="232" stroke="var(--lessonrule)" stroke-width="1"/>
+<text x="491.9" y="30" text-anchor="middle" font-size="11" fill="var(--ink2)" font-weight="700">L3</text>
+<rect class="band" x="529.2" y="40" width="78.7" height="192" fill="var(--band)"><title>Lesson 4: Get over being a sugar cookie (8:38–10:05)</title></rect>
+<line x1="528.2" x2="528.2" y1="34" y2="232" stroke="var(--lessonrule)" stroke-width="1"/>
+<text x="568.5" y="30" text-anchor="middle" font-size="11" fill="var(--ink2)" font-weight="700">L4</text>
+<rect class="band" x="609.8" y="40" width="76.6" height="192" fill="var(--band)"><title>Lesson 5: Don't be afraid of the circuses (10:05–11:30)</title></rect>
+<line x1="608.8" x2="608.8" y1="34" y2="232" stroke="var(--lessonrule)" stroke-width="1"/>
+<text x="648.1" y="30" text-anchor="middle" font-size="11" fill="var(--ink2)" font-weight="700">L5</text>
+<rect class="band" x="688.4" y="40" width="74.4" height="192" fill="var(--band)"><title>Lesson 6: Slide down the obstacle head first (11:30–12:52)</title></rect>
+<line x1="687.4" x2="687.4" y1="34" y2="232" stroke="var(--lessonrule)" stroke-width="1"/>
+<text x="725.6" y="30" text-anchor="middle" font-size="11" fill="var(--ink2)" font-weight="700">L6</text>
+<rect class="band" x="764.8" y="40" width="63.3" height="192" fill="var(--band)"><title>Lesson 7: Don't back down from the sharks (12:52–14:02)</title></rect>
+<line x1="763.8" x2="763.8" y1="34" y2="232" stroke="var(--lessonrule)" stroke-width="1"/>
+<text x="796.4" y="30" text-anchor="middle" font-size="11" fill="var(--ink2)" font-weight="700">L7</text>
+<rect class="band" x="830.1" y="40" width="87.0" height="192" fill="var(--band)"><title>Lesson 8: Be your very best in the darkest moment (14:02–15:38)</title></rect>
+<line x1="829.1" x2="829.1" y1="34" y2="232" stroke="var(--lessonrule)" stroke-width="1"/>
+<text x="873.6" y="30" text-anchor="middle" font-size="11" fill="var(--ink2)" font-weight="700">L8</text>
+<rect class="band" x="919.1" y="40" width="120.2" height="192" fill="var(--band)"><title>Lesson 9: Start singing when you're up to your neck in mud (15:38–17:50)</title></rect>
+<line x1="918.1" x2="918.1" y1="34" y2="232" stroke="var(--lessonrule)" stroke-width="1"/>
+<text x="979.2" y="30" text-anchor="middle" font-size="11" fill="var(--ink2)" font-weight="700">L9</text>
+<rect class="band" x="1041.3" y="40" width="37.2" height="192" fill="var(--band)"><title>Lesson 10: Don't ever ring the bell (17:50–18:32)</title></rect>
+<line x1="1040.3" x2="1040.3" y1="34" y2="232" stroke="var(--lessonrule)" stroke-width="1"/>
+<text x="1059.9" y="30" text-anchor="middle" font-size="11" fill="var(--ink2)" font-weight="700">L10</text>
+<line x1="46" x2="1130" y1="232.0" y2="232.0" stroke="var(--grid)" stroke-width="1"/>
+<text x="38" y="236.0" text-anchor="end" font-size="11" fill="var(--mute)" style="font-variant-numeric:tabular-nums">0.4</text>
+<line x1="46" x2="1130" y1="168.0" y2="168.0" stroke="var(--grid)" stroke-width="1"/>
+<text x="38" y="172.0" text-anchor="end" font-size="11" fill="var(--mute)" style="font-variant-numeric:tabular-nums">0.6</text>
+<line x1="46" x2="1130" y1="104.0" y2="104.0" stroke="var(--grid)" stroke-width="1"/>
+<text x="38" y="108.0" text-anchor="end" font-size="11" fill="var(--mute)" style="font-variant-numeric:tabular-nums">0.8</text>
+<line x1="46" x2="1130" y1="40.0" y2="40.0" stroke="var(--grid)" stroke-width="1"/>
+<text x="38" y="44.0" text-anchor="end" font-size="11" fill="var(--mute)" style="font-variant-numeric:tabular-nums">1.0</text>
+<text x="46.0" y="270" text-anchor="middle" font-size="11" fill="var(--mute)">0:00</text>
+<text x="157.5" y="270" text-anchor="middle" font-size="11" fill="var(--mute)">2:00</text>
+<text x="269.0" y="270" text-anchor="middle" font-size="11" fill="var(--mute)">4:00</text>
+<text x="380.5" y="270" text-anchor="middle" font-size="11" fill="var(--mute)">6:00</text>
+<text x="492.0" y="270" text-anchor="middle" font-size="11" fill="var(--mute)">8:00</text>
+<text x="603.5" y="270" text-anchor="middle" font-size="11" fill="var(--mute)">10:00</text>
+<text x="715.0" y="270" text-anchor="middle" font-size="11" fill="var(--mute)">12:00</text>
+<text x="826.5" y="270" text-anchor="middle" font-size="11" fill="var(--mute)">14:00</text>
+<text x="938.0" y="270" text-anchor="middle" font-size="11" fill="var(--mute)">16:00</text>
+<text x="1049.5" y="270" text-anchor="middle" font-size="11" fill="var(--mute)">18:00</text>
+<line x1="46" x2="1130" y1="232" y2="232" stroke="var(--axis)" stroke-width="1"/>
+<polyline points="53.3,83.5 65.7,60.6 69.1,105.3 73.5,162.8 76.8,135.4 81.4,135.7 94.1,85.2 101.5,103.6 109.4,72.9 109.4,108.7 114.9,130.8 114.9,83.0 123.9,143.1 123.9,110.0 132.3,82.3 133.3,188.1 135.3,49.2 154.3,53.6 156.5,130.3 161.0,117.9 166.8,62.5 172.0,125.4 174.6,159.7 184.0,81.9 198.3,69.6 206.4,133.8 208.5,155.3 212.7,159.4 216.1,93.0 222.7,88.2 226.3,204.5 232.1,91.9 239.6,94.1 245.7,163.8 255.8,86.6 258.4,84.7 263.4,57.8 275.7,62.6 289.6,88.7 298.5,80.4 302.6,82.9 310.7,104.9 320.6,80.0 329.7,151.0 332.8,228.7 337.0,64.7 345.4,81.3 350.2,181.6 355.3,80.1 363.1,97.8 367.7,110.3 371.8,99.9 376.5,83.9 389.1,108.3 393.2,132.5 393.2,162.2 399.9,76.6 406.4,98.8 412.0,80.7 422.8,49.4 427.3,162.3 434.0,145.9 438.6,85.4 442.2,87.0 450.7,159.0 455.7,73.0 462.6,114.0 464.7,102.9 476.1,56.0 485.4,80.0 490.0,89.1 501.3,85.2 511.6,97.5 513.9,112.5 516.4,193.2 520.6,125.7 528.2,84.2 533.0,185.6 535.2,131.9 541.4,94.2 550.1,107.3 552.7,99.6 558.2,116.7 564.3,104.9 564.3,122.0 572.0,129.1 577.4,133.2 581.6,89.7 583.9,102.6 587.6,85.6 589.5,127.4 591.2,102.2 594.2,136.1 600.4,135.1 602.9,218.6 608.8,67.1 618.2,136.8 620.5,104.2 625.7,60.4 636.3,115.7 638.6,119.4 641.8,126.8 648.1,60.2 655.1,99.6 659.2,113.8 666.8,59.6 670.1,113.9 673.6,109.7 675.0,131.4 676.2,67.5 677.8,139.0 679.3,196.0 682.8,130.4 687.4,110.5 692.2,102.0 698.8,78.0 701.7,91.0 707.1,131.5 709.8,134.8 720.1,56.3 724.7,109.8 726.7,148.4 732.6,79.4 739.3,141.5 743.9,107.0 745.7,91.0 750.0,113.3 753.6,144.5 757.7,194.0 763.8,143.5 769.8,71.2 773.1,79.8 777.4,99.8 779.2,134.9 787.7,73.1 795.0,85.2 802.7,124.3 804.5,115.0 806.6,65.1 815.7,83.2 819.0,119.6 823.0,84.1 829.1,75.0 833.6,162.1 837.0,86.0 849.0,90.5 855.7,144.2 860.3,128.0 864.5,71.1 867.5,77.1 870.2,107.9 873.1,71.2 879.1,185.1 880.9,113.3 893.1,52.9 911.5,137.3 918.1,141.2 918.1,133.1 928.6,68.4 938.2,62.6 949.7,110.5 959.0,112.0 963.8,86.5 973.1,77.2 977.0,126.6 983.1,120.2 989.0,101.5 993.2,113.7 996.0,134.7 1001.2,115.9 1006.5,78.6 1011.6,123.3 1018.9,192.0 1024.4,105.6 1035.2,81.2 1040.3,209.8 1044.6,102.6 1050.6,112.8 1053.9,180.2 1056.9,141.9 1061.3,59.2 1070.6,100.3 1073.9,144.5 1079.5,76.1 1084.1,115.3 1086.9,152.3 1090.2,212.1 1091.4,67.9 1097.6,60.4 1100.0,215.4 1101.4,159.5 1102.5,86.7 1126.9,58.7" fill="none" stroke="#3a6ea5" stroke-width="1.75" stroke-linejoin="round"/>
+<circle cx="133.3" cy="188.1" r="5" fill="#c8741f" stroke="#ffffff" stroke-width="2"><title>Candidate boundary at 1:33 (sentence 17), similarity 0.54, depth 0.76</title></circle>
+<circle cx="174.6" cy="159.7" r="5" fill="#c8741f" stroke="#ffffff" stroke-width="2"><title>Candidate boundary at 2:18 (sentence 24), similarity 0.63, depth 0.59</title></circle>
+<circle cx="226.3" cy="204.5" r="5" fill="#c8741f" stroke="#ffffff" stroke-width="2"><title>Candidate boundary at 3:14 (sentence 32), similarity 0.49, depth 0.72</title></circle>
+<circle cx="332.8" cy="228.7" r="5" fill="#c8741f" stroke="#ffffff" stroke-width="2"><title>Candidate boundary at 5:08 (sentence 46), similarity 0.41, depth 0.98</title></circle>
+<circle cx="427.3" cy="162.3" r="5" fill="#c8741f" stroke="#ffffff" stroke-width="2"><title>Candidate boundary at 6:50 (sentence 62), similarity 0.62, depth 0.59</title></circle>
+<circle cx="462.6" cy="114.0" r="5" fill="#c8741f" stroke="#ffffff" stroke-width="2"><title>Candidate boundary at 7:28 (sentence 68), similarity 0.77, depth 0.31</title></circle>
+<circle cx="516.4" cy="193.2" r="5" fill="#c8741f" stroke="#ffffff" stroke-width="2"><title>Candidate boundary at 8:26 (sentence 76), similarity 0.52, depth 0.68</title></circle>
+<circle cx="602.9" cy="218.6" r="5" fill="#c8741f" stroke="#ffffff" stroke-width="2"><title>Candidate boundary at 9:59 (sentence 96), similarity 0.44, depth 0.73</title></circle>
+<circle cx="641.8" cy="126.8" r="5" fill="#c8741f" stroke="#ffffff" stroke-width="2"><title>Candidate boundary at 10:41 (sentence 103), similarity 0.73, depth 0.42</title></circle>
+<circle cx="679.3" cy="196.0" r="5" fill="#c8741f" stroke="#ffffff" stroke-width="2"><title>Candidate boundary at 11:21 (sentence 113), similarity 0.51, depth 0.77</title></circle>
+<circle cx="726.7" cy="148.4" r="5" fill="#c8741f" stroke="#ffffff" stroke-width="2"><title>Candidate boundary at 12:12 (sentence 123), similarity 0.66, depth 0.50</title></circle>
+<circle cx="757.7" cy="194.0" r="5" fill="#c8741f" stroke="#ffffff" stroke-width="2"><title>Candidate boundary at 12:45 (sentence 130), similarity 0.52, depth 0.71</title></circle>
+<circle cx="802.7" cy="124.3" r="5" fill="#c8741f" stroke="#ffffff" stroke-width="2"><title>Candidate boundary at 13:34 (sentence 138), similarity 0.74, depth 0.35</title></circle>
+<circle cx="833.6" cy="162.1" r="5" fill="#c8741f" stroke="#ffffff" stroke-width="2"><title>Candidate boundary at 14:07 (sentence 145), similarity 0.62, depth 0.51</title></circle>
+<circle cx="879.1" cy="185.1" r="5" fill="#c8741f" stroke="#ffffff" stroke-width="2"><title>Candidate boundary at 14:56 (sentence 154), similarity 0.55, depth 0.77</title></circle>
+<circle cx="1040.3" cy="209.8" r="5" fill="#c8741f" stroke="#ffffff" stroke-width="2"><title>Candidate boundary at 17:50 (sentence 177), similarity 0.47, depth 0.74</title></circle>
+<path d="M46.5,240 L52.5,251 L40.5,251 Z" fill="#2a9d8f" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"><title>Moment 1 starts 0:00: Opening and the power of ripple effects</title></path>
+<path d="M174.6,240 L180.6,251 L168.6,251 Z" fill="#2a9d8f" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"><title>Moment 2 starts 2:18: Real examples of life-changing decisions</title></path>
+<path d="M226.3,240 L232.3,251 L220.3,251 Z" fill="#2a9d8f" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"><title>Moment 3 starts 3:14: Introduction to SEAL training lessons</title></path>
+<path d="M332.8,240 L338.8,251 L326.8,251 Z" fill="#2a9d8f" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"><title>Moment 4 starts 5:08: Lesson one: Make your bed</title></path>
+<path d="M393.2,240 L399.2,251 L387.2,251 Z" fill="#2a9d8f" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"><title>Moment 5 starts 6:13: Lesson two: Find help to paddle</title></path>
+<path d="M455.7,240 L461.7,251 L449.7,251 Z" fill="#2a9d8f" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"><title>Moment 6 starts 7:20: Lesson three: Measure by heart, not size</title></path>
+<path d="M528.2,240 L534.2,251 L522.2,251 Z" fill="#2a9d8f" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"><title>Moment 7 starts 8:38: Lesson four: Accept failure and move forward</title></path>
+<path d="M608.8,240 L614.8,251 L602.8,251 Z" fill="#2a9d8f" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"><title>Moment 8 starts 10:05: Lesson five: Don't fear the circuses</title></path>
+<path d="M687.4,240 L693.4,251 L681.4,251 Z" fill="#2a9d8f" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"><title>Moment 9 starts 11:30: Lesson six: Slide down obstacles head first</title></path>
+<path d="M757.7,240 L763.7,251 L751.7,251 Z" fill="#2a9d8f" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"><title>Moment 10 starts 12:45: Lesson seven: Don't back down from sharks</title></path>
+<path d="M829.1,240 L835.1,251 L823.1,251 Z" fill="#2a9d8f" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"><title>Moment 11 starts 14:02: Lesson eight: Be your best in the darkest moments</title></path>
+<path d="M918.1,240 L924.1,251 L912.1,251 Z" fill="#2a9d8f" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"><title>Moment 12 starts 15:38: Lesson nine: Start singing in the mud</title></path>
+<path d="M1040.3,240 L1046.3,251 L1034.3,251 Z" fill="#2a9d8f" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"><title>Moment 13 starts 17:50: Lesson ten: Never ring the bell</title></path>
+<path d="M1079.5,240 L1085.5,251 L1073.5,251 Z" fill="#2a9d8f" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"><title>Moment 14 starts 18:32: Final message to graduates</title></path>
+</svg>
+      <div class="cap">Dips mark topic shifts. Candidates often land 1–2 sentences early, pushing a moral into the next segment; Stage 2 repairs most of them: 9 of 10 final moment starts sit within 10 s of a lesson start (L1 is the miss). Source: data/drift.json, data/moments.json, data/lessons.json.</div>
+    </div>
+  </div>
+  <div class="notes">Stage 1 is free and offline. Its 16 boundaries give 17 candidate segments, but only 6 of 10 lesson starts sit within 10 s of one. The Haiku prompt describes the job generically (one story plus its point per moment) and never mentions lessons, refrains or counts. Disclosure: Haiku titled most moments "Lesson one ... Lesson ten" because the speaker numbers them aloud. Labelling cost $0.0253 for the whole video.</div>
+</section>
+
+<!-- 7 RETRIEVAL -->
+<section class="slide">
+  <div class="kicker">4 · Moment RAG implementation · retrieval</div>
+  <h1 class="head">RRF over two collections plus an <span class="hl">adaptive cut</span> returns 1.92 moments per question.</h1>
+  <div class="body">
+    <div class="cols">
+      <div class="col nv" style="flex:0.85">
+        <h3>How a query runs</h3>
+        <ul class="pts sm">
+          <li>Embed the question once.</li>
+          <li>Query summaries and full text, top 10 each.</li>
+          <li>Fuse with Reciprocal Rank Fusion, k=60.</li>
+          <li>Always keep the top moment.</li>
+          <li>Keep moments 2–3 only if score ≥ 0.97 × top.</li>
+          <li>Sonnet reads full moment text, labelled [n] Title (mm:ss–mm:ss).</li>
+        </ul>
+      </div>
+      <div class="col" style="flex:1.15">
+        <h3>Offline sweep, moment side (n=12)</h3>
+        <table class="data tight">
+          <tr><th>config</th><th class="num">recall</th><th class="num">purity</th><th class="num">moments</th></tr>
+          <tr><td>fixed k=3 (v2)</td><td class="num">0.83</td><td class="num">0.37</td><td class="num">3.00</td></tr>
+          <tr><td>R = 0.5 to 0.9 (planned grid)</td><td class="num">0.83</td><td class="num">0.37</td><td class="num">3.00</td></tr>
+          <tr><td>fixed k=2</td><td class="num">0.83</td><td class="num">0.61</td><td class="num">2.00</td></tr>
+          <tr class="hi"><td><b>R = 0.97 (chosen)</b></td><td class="num">0.83</td><td class="num">0.71</td><td class="num">1.92</td></tr>
+          <tr><td>R = 0.98</td><td class="num">0.83</td><td class="num">0.75</td><td class="num">1.75</td></tr>
+          <tr><td>R = 0.985</td><td class="num">0.76</td><td class="num">0.89</td><td class="num">1.17</td></tr>
+          <tr><td>fixed k=1</td><td class="num">0.64</td><td class="num">0.84</td><td class="num">1.00</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="callout"><b>Disclosure: R was tuned on the same 12 questions; there is no held-out set.</b> RRF compresses scores (moments 2–3 score ≥ 0.95 of the top everywhere), so the planned grid changed nothing. 0.97 sits on a plateau; 0.98 is one step from the recall cliff at 0.985.</div>
+  </div>
+  <div class="notes">The adaptive cut is the v3 change. The originally planned grid (R = 0.5 to 0.9) did nothing because RRF with k=60 squeezes fused scores into a narrow band, so the sweep was extended to 0.955 to 0.99. Choosing R on the golden set flatters v3; the held-out set is the first next step.</div>
+</section>
+
+<!-- 8 GOLDEN SET -->
+<section class="slide">
+  <div class="kicker">5 · Comparison · how it was scored</div>
+  <h1 class="head">Twelve questions in <span class="hl">three types</span> test single facts, story-plus-moral, and cross-lesson answers.</h1>
+  <div class="body" style="gap:16px">
+    <div class="grid3">
+      <div class="card lt"><div class="tag">lookup · 4</div><h4>Answer sits inside one lesson</h4><p>"How long was the rope on the slide for life obstacle?"</p></div>
+      <div class="card lt"><div class="tag">span · 4</div><h4>Needs the story and its moral</h4><p>"What happened to a student who failed the uniform inspection, and what does McRaven say that teaches?"</p></div>
+      <div class="card lt"><div class="tag">multi · 4</div><h4>Spans two or three lessons</h4><p>"What do the night swim and the underwater ship attack have in common, and how do their lessons differ?"</p></div>
+    </div>
+    <table class="data tight">
+      <tr><th style="width:220px">metric</th><th>definition</th></tr>
+      <tr><td><b>lesson_recall</b></td><td>Share of expected lessons covered by at least one retrieved unit</td></tr>
+      <tr><td><b>context_precision</b></td><td>Share of retrieved units that cover an expected lesson</td></tr>
+      <tr><td><b>context_purity</b></td><td>Word-weighted share of retrieved context inside an expected lesson</td></tr>
+      <tr><td><b>citation_accuracy</b></td><td>Share of distinct [n] citations whose unit covers an expected lesson</td></tr>
+      <tr><td><b>phrase_coverage</b></td><td>Share of 3 key phrases present verbatim in the answer</td></tr>
+      <tr><td><b>judge_score</b></td><td>LLM judge (Haiku), not human: answer vs reference answer, 1–5</td></tr>
+    </table>
+    <div class="callout"><b>Covers:</b> a unit overlaps ≥ 50% of the lesson, or ≥ 50% of the unit lies inside it. Precision and purity both rise when fewer units return; purity is the fairer of the two.</div>
+  </div>
+  <div class="notes">Reference answers were written from the transcript, not memory. Expected time ranges come from lessons.json at eval time. Tokens, latency and dollars are logged per call.</div>
+</section>
+
+<!-- 9 HEADLINE COMPARISON -->
+<section class="slide">
+  <div class="kicker">5 · Comparison · baseline vs Moment RAG v3</div>
+  <h1 class="head">Moments match answer quality with <span class="hl">purer, smaller context</span>, but miss more lessons.</h1>
+  <div class="body">
+    <table class="data">
+      <tr><th>metric (overall mean, n=12)</th><th class="num">baseline (k=5 chunks)</th><th class="num">moment v3 (k ≤ 3)</th><th>better</th></tr>
+      <tr><td>judge_score · LLM judge (Haiku), not human, 1–5</td><td class="num">4.58</td><td class="num">4.58</td><td>tie</td></tr>
+      <tr><td>citation_accuracy</td><td class="num">0.93</td><td class="num">0.92</td><td>tie</td></tr>
+      <tr class="hi"><td>context_purity</td><td class="num">0.52</td><td class="num">0.71</td><td class="w">moment</td></tr>
+      <tr><td>context_precision</td><td class="num">0.57</td><td class="num">0.68</td><td class="w">moment</td></tr>
+      <tr class="hi"><td>context_tokens (mean)</td><td class="num">1202</td><td class="num">921</td><td class="w">moment</td></tr>
+      <tr><td>latency_s (mean)</td><td class="num">4</td><td class="num">3</td><td class="w">moment</td></tr>
+      <tr class="hi"><td>answer usd / question</td><td class="num">$0.0054</td><td class="num">$0.0043</td><td class="w">moment</td></tr>
+      <tr><td>lesson_recall</td><td class="num">0.94</td><td class="num">0.83</td><td class="w">baseline</td></tr>
+      <tr><td>phrase_coverage</td><td class="num">0.75</td><td class="num">0.67</td><td class="w">baseline</td></tr>
+    </table>
+    <div class="callout"><b>Noise floor.</b> The baseline retrieves the same chunks every run, yet its judge moved 4.42–4.58 and phrase coverage 0.75–0.81. Moment deltas smaller than that are not signal.</div>
+  </div>
+  <div class="foot">Source: reports/scorecard.md, v3 run 2026-09-25 · by type: span purity 0.77 vs 0.47, multi purity 0.92 vs 0.68</div>
+  <div class="notes">The honest read: a tie on answers, a clear win on what goes into the prompt, and a loss on recall. Span and multi questions drive the purity win; lookup questions are roughly even (purity 0.43 vs 0.42).</div>
+</section>
+
+<!-- 10 ITERATION -->
+<section class="slide">
+  <div class="kicker">5 · Comparison · three versions</div>
+  <h1 class="head">Each version <span class="hl">fixed one failure</span> the previous eval exposed.</h1>
+  <div class="body">
+    <table class="data">
+      <tr><th>moment side, overall (n=12)</th><th class="num">v1</th><th class="num">v2</th><th class="num">v3</th><th class="num">baseline</th></tr>
+      <tr><td>moments · k</td><td class="num">11 · 3</td><td class="num">14 · 3</td><td class="num">14 · ≤ 3</td><td class="num">36 chunks · 5</td></tr>
+      <tr class="hi"><td>boundary score (lesson starts within 10 s of a moment start)</td><td class="num">0.60</td><td class="num">0.90</td><td class="num">0.90</td><td class="num">–</td></tr>
+      <tr><td>lesson_recall</td><td class="num">0.83</td><td class="num">0.83</td><td class="num">0.83</td><td class="num">0.94</td></tr>
+      <tr class="hi"><td>context_purity</td><td class="num">0.32</td><td class="num">0.37</td><td class="num">0.71</td><td class="num">0.52</td></tr>
+      <tr><td>citation_accuracy</td><td class="num">0.82</td><td class="num">0.86</td><td class="num">0.92</td><td class="num">0.93</td></tr>
+      <tr><td>judge_score · LLM judge (Haiku), not human</td><td class="num">4.42</td><td class="num">4.67</td><td class="num">4.58</td><td class="num">4.58</td></tr>
+      <tr><td>context_tokens (mean)</td><td class="num">1670</td><td class="num">1447</td><td class="num">921</td><td class="num">1202</td></tr>
+      <tr><td>answer usd / question</td><td class="num">$0.0063</td><td class="num">$0.0056</td><td class="num">$0.0043</td><td class="num">$0.0054</td></tr>
+    </table>
+    <div class="cols" style="flex:0 0 auto">
+      <div class="col nv"><h3>v1 → v2: boundaries</h3><ul class="pts sm"><li>Ship-attack story and moral rejoin one moment.</li><li>q10 judge rises from 2 to 5.</li></ul></div>
+      <div class="col nv"><h3>v2 → v3: context size</h3><ul class="pts sm"><li>Adaptive k drops weak extra moments.</li><li>Purity 0.37 → 0.71; tokens 1447 → 921.</li></ul></div>
+    </div>
+  </div>
+  <div class="notes">Baseline column is from the v3 run. v1 purity was recomputed from v1's saved retrievals. Phrase coverage fell 0.78 to 0.67 across versions, but several misses are paraphrases the exact-match metric does not credit, so treat it as weak.</div>
+</section>
+
+<!-- 11 SIDE BY SIDE -->
+<section class="slide">
+  <div class="kicker">5 · Comparison · one span question, two answers</div>
+  <h1 class="head">One moment answered the sugar-cookie question with <span class="hl">half the tokens</span> of five chunks.</h1>
+  <div class="sub">q06: "What happened to a student who failed the uniform inspection, and what does McRaven say that teaches?"</div>
+  <div class="body">
+    <div class="cols">
+      <div class="ans">
+        <h3 style="font-size:17px">Baseline · 5 chunks, stitched from [2] [3] [4]</h3>
+        <div class="meta"><span>purity <b>0.52</b></span><span>tokens <b>1237</b></span><span>cost <b>$0.0062</b></span><span>judge <b>5</b></span></div>
+        <blockquote>"According to excerpt [2] (8:26–9:11) and [3] (8:53–9:43), a student who failed the uniform inspection had to 'run, fully clothed into the surf zone' ... an effect known as a 'sugar cookie.' ... As stated in excerpt [4] (9:26–10:16), the lesson is: '... If you want to change the world, get over being a sugar cookie and keep moving forward.'"</blockquote>
+        <ul class="pts sm"><li>Story and moral sit in three overlapping chunks.</li><li>Two retrieved chunks are off-lesson (4:07, 16:00).</li></ul>
+      </div>
+      <div class="ans nv">
+        <h3 style="font-size:17px">Moment v3 · 1 moment: "Lesson four" (8:39–10:06)</h3>
+        <div class="meta"><span>purity <b>1.00</b></span><span>tokens <b>601</b></span><span>cost <b>$0.0038</b></span><span>judge <b>5</b></span></div>
+        <blockquote>"According to excerpt [1] (8:39–10:06), a student who failed the uniform inspection had to run 'fully clothed into the surf zone,' ... an effect known as a 'sugar cookie.' ... the lesson for succeeding, and for changing the world, is to 'get over being a sugar cookie and keep moving forward' [1]."</blockquote>
+        <ul class="pts sm"><li>Story and moral arrive as one unit.</li><li>Adaptive k kept a single moment.</li></ul>
+      </div>
+    </div>
+  </div>
+  <div class="foot">Source: reports/results.json, q06 (answers abridged with ellipses). Judge scores are LLM judge (Haiku), not human.</div>
+  <div class="notes">Both answers are correct and score 5. The difference is what it took to get there: the baseline needed three overlapping chunks to reassemble one lesson, plus two chunks from elsewhere in the talk. The moment pipeline sent one self-contained lesson.</div>
+</section>
+
+<!-- 12 FAILURE ANALYSIS -->
+<section class="slide">
+  <div class="kicker">6 · Findings · failure analysis</div>
+  <h1 class="head">Most moment misses are <span class="hl">boundary or breadth</span> problems, not retrieval noise.</h1>
+  <div class="body">
+    <table class="data lg">
+      <tr><th style="width:120px">question</th><th style="width:250px">score, moment vs baseline</th><th>cause</th></tr>
+      <tr><td><b>q01</b> lookup</td><td>recall 0.00 vs 1.00; judge 5 vs 5</td><td>Boundary miss: sentences 43–45 stayed in the intro moment. Right answer, scored as a miss.</td></tr>
+      <tr><td><b>q11</b> multi</td><td>recall 0.33 vs 0.67; judge 2 vs 3</td><td>Adaptive k cut to one moment. "Numbers" share no vocabulary across lessons.</td></tr>
+      <tr><td><b>q09</b> multi</td><td>recall 0.67 vs 0.67; judge 4 vs 3</td><td>Lesson 9 (mud flats) missed; the baseline also missed one lesson.</td></tr>
+      <tr><td><b>q12</b> multi</td><td>purity 1.00 vs 0.58; judge 4 vs 5</td><td>Perfect retrieval; the answer hedged. Wording, not retrieval.</td></tr>
+      <tr><td><b>Distractor</b></td><td>extra unit in q07, q08, q10</td><td>"Find help to paddle" summary echoes the talk's theme, so it matches many questions.</td></tr>
+    </table>
+    <div class="callout lg"><b>The clearest cost of adaptive k is q11:</b> questions that enumerate across the talk need breadth that the score gap does not signal.</div>
+  </div>
+  <div class="foot">Source: README.md "Failure analysis (v3)"; reports/scorecard.md per-question table. Judge = LLM judge (Haiku), not human.</div>
+  <div class="notes">q01 is instructive: Stage 1 put the boundary at sentence 46, lesson 1 starts at 43, the ±3 rule allowed the move, and Haiku did not make it. Phrase coverage is brittle too: "munchkin crew", "200-foot" and "mud flats" are missed by both pipelines as paraphrases.</div>
+</section>
+
+<!-- 13 COST + REVIEWER FEEDBACK -->
+<section class="slide">
+  <div class="kicker">6 · Findings · cost and prior feedback</div>
+  <h1 class="head">Every call is costed, and <span class="hl">all moment work sits on the write path</span>.</h1>
+  <div class="body">
+    <div class="cols">
+      <div class="col nv">
+        <h3>Cost lines</h3>
+        <table class="data lg">
+          <tr><th>item</th><th class="num">usd</th></tr>
+          <tr><td>Ingestion: Haiku labelling, 14 moments, 2 calls</td><td class="num">$0.0253</td></tr>
+          <tr><td>Ingestion per moment</td><td class="num">$0.0018</td></tr>
+          <tr><td>Answer per question, baseline</td><td class="num">$0.0054</td></tr>
+          <tr class="hi"><td>Answer per question, moment v3</td><td class="num">$0.0043</td></tr>
+          <tr><td>LLM judge (Haiku) per answer judged</td><td class="num">$0.0008</td></tr>
+          <tr><td>Full eval v1 / v2 / v3</td><td class="num" style="white-space:nowrap">$0.1608 / $0.1502 / $0.1370</td></tr>
+          <tr><td><b>Total spend, every run</b></td><td class="num"><b>$0.5270</b></td></tr>
+        </table>
+        <div class="lede" style="font-size:14px">Rates: Sonnet 5 $2 / $10 and Haiku 4.5 $1 / $5 per 1M input / output tokens.</div>
+      </div>
+      <div class="col">
+        <h3>Cohort 1 reviewer feedback, carried forward</h3>
+        <div class="lede">Jayita Chatterjee, Cohort 1 reviewer, 2026-08-07</div>
+        <ul class="pts">
+          <li><b>Cost instrumentation:</b> a price table; every call returns usd.</li>
+          <li><b>Write vs read path:</b> moments persist at ingest; queries stay cheap.</li>
+          <li><b>Query path</b> = baseline's: 1 embedding, 2 lookups, 1 Sonnet call.</li>
+          <li><b>Worker scaling:</b> a limitation here, not built.</li>
+          <li>Ingest runs sequential and single-process today.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="foot">Source: README.md "Cost"; reports/scorecard.md; DESIGN.md "Carried forward from Cohort 1 A3 reviewer feedback". Total includes a smoke run estimated at about $0.0171.</div>
+  <div class="notes">The labelling pass is paid once per video. It must re-run if the transcript changes. Offline runs (Stage 1, offline eval, the sweep) cost nothing.</div>
+</section>
+
+<!-- 14 LIMITATIONS -->
+<section class="slide">
+  <div class="kicker">6 · Limitations and next steps</div>
+  <h1 class="head">The tie is real but small; <span class="hl">a held-out set and a human pass</span> come next.</h1>
+  <div class="body">
+    <table class="data lg">
+      <tr><th style="width:530px">limitation</th><th>next step</th></tr>
+      <tr><td><b>No held-out set;</b> R tuned on the 12 questions</td><td>Write 12+ held-out questions before viewing v3 retrievals</td></tr>
+      <tr><td><b>Judge is Haiku, not human</b></td><td>Human faithfulness pass on all 24 v3 answers</td></tr>
+      <tr><td><b>One 19-minute video;</b> one labelling prompt</td><td>Windowed labelling with overlap; validate across seams</td></tr>
+      <tr><td><b>Weak adaptive-k signal:</b> RRF squeezes scores to 0.95–1.0</td><td>Try raw cosine or smaller RRF k; floor of 2 for enumerations</td></tr>
+      <tr><td><b>Stage 2 skipped a fix</b> (q01)</td><td>Offline check: flag moments near a strong drift dip</td></tr>
+      <tr><td><b>Validator gap:</b> a 4-sentence move passes as merge + split</td><td>Track moves and splits separately</td></tr>
+      <tr><td><b>Worker scaling:</b> sequential, single-process ingest</td><td>Parallel embedding and labelling workers; write path only</td></tr>
+    </table>
+    <div class="callout lg"><b>Finding:</b> better units did not raise answer scores on a 19-minute talk, but they cut context by 23% and cost by 20% at zero extra query-time work.</div>
+  </div>
+  <div class="foot">Source: README.md "Limitations and next steps"</div>
+  <div class="notes">Close on the trade: moments bought cleaner, cheaper context without hurting answers, and cost recall. The next experiment that would change my mind is a held-out question set judged by a human.</div>
+</section>
+
+</div></div>
+
+<div id="bar"></div>
+<div id="count"></div>
+<div id="hint">← → navigate · N notes · F fullscreen</div>
+<div id="notes"><h6>Speaker notes</h6><div id="notesBody"></div></div>
+
+<script>
+(function(){
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var i = 0;
+  var bar = document.getElementById('bar'), count = document.getElementById('count');
+  var notes = document.getElementById('notes'), notesBody = document.getElementById('notesBody');
+  var canvas = document.getElementById('canvas');
+  function fit(){ var s = Math.min(window.innerWidth / 1280, window.innerHeight / 720); canvas.style.transform = 'scale(' + s + ')'; }
+  window.addEventListener('resize', fit); fit();
+  function show(n){
+    i = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach(function(s, k){ s.classList.toggle('on', k === i); });
+    count.textContent = (i + 1) + ' / ' + slides.length;
+    bar.style.width = ((i + 1) / slides.length * 100) + '%';
+    var nd = slides[i].querySelector('.notes');
+    notesBody.textContent = nd ? nd.textContent : '(no notes)';
+  }
+  document.addEventListener('keydown', function(e){
+    var k = e.key;
+    if (k === 'ArrowRight' || k === 'ArrowDown' || k === ' ' || k === 'PageDown'){ e.preventDefault(); show(i + 1); }
+    else if (k === 'ArrowLeft' || k === 'ArrowUp' || k === 'PageUp'){ e.preventDefault(); show(i - 1); }
+    else if (k === 'Home'){ show(0); }
+    else if (k === 'End'){ show(slides.length - 1); }
+    else if (k === 'n' || k === 'N'){ notes.classList.toggle('on'); }
+    else if (k === 'f' || k === 'F'){ if (!document.fullscreenElement){ document.documentElement.requestFullscreen(); } else { document.exitFullscreen(); } }
+  });
+  document.addEventListener('click', function(e){
+    if (notes.contains(e.target) || e.target.closest('svg')) return;
+    if (e.clientX < window.innerWidth * 0.22) show(i - 1); else show(i + 1);
+  });
+  var x0 = null;
+  document.addEventListener('touchstart', function(e){ x0 = e.changedTouches[0].clientX; });
+  document.addEventListener('touchend', function(e){
+    if (x0 === null) return;
+    var dx = e.changedTouches[0].clientX - x0;
+    if (Math.abs(dx) > 45){ dx < 0 ? show(i + 1) : show(i - 1); }
+    x0 = null;
+  });
+  show(0);
+})();
+</script>
+</body>
+</html>

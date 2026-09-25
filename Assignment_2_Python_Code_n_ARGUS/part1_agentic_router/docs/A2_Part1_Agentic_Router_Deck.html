@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Agentic Router Extended</title>
+<style>
+  :root{
+    --paper:#ffffff;
+    --ink:#15212f;
+    --ink2:#3d4a5a;
+    --mute:#5f6b7a;
+    --faint:#8a95a3;
+    --line:#e3e8ef;
+    --line2:#c9d6e5;
+    --navy:#2c4a6e;
+    --accent:#7fb3e0;
+    --muted:#c9d6e5;
+    --tint:#f3f6fa;
+    --band:#eef3f8;
+    --lessonrule:#b8c6d6;
+    --grid:#e8edf3;
+    --axis:#b3bfcc;
+    --win:#2c4a6e;
+    --font:"Helvetica Neue",Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{background:#eef1f5;color:var(--ink);font-family:var(--font);overflow:hidden;-webkit-font-smoothing:antialiased}
+  #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+  #canvas{width:1280px;height:720px;position:relative;transform-origin:center center;background:var(--paper);counter-reset:slide}
+  .slide{position:absolute;inset:0;padding:48px 68px 40px 68px;display:none;flex-direction:column;background:var(--paper);counter-increment:slide}
+  .slide.on{display:flex}
+  .slide::after{content:counter(slide);position:absolute;right:68px;bottom:16px;font-size:11px;color:var(--faint);font-variant-numeric:tabular-nums}
+  .slide::before{content:"";position:absolute;left:0;top:0;bottom:0;width:6px;background:var(--navy)}
+
+  .kicker{display:flex;align-items:center;gap:14px;font-size:12.5px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--navy);margin-bottom:14px}
+  .kicker::before{content:"";width:28px;height:3px;background:var(--accent);flex:none}
+  h1.head{font-size:34px;line-height:1.2;font-weight:500;letter-spacing:-.4px;max-width:1120px;color:var(--ink)}
+  h1.head .hl{color:var(--navy);font-weight:700}
+  .sub{margin-top:10px;font-size:16px;line-height:1.5;color:var(--mute);max-width:1080px}
+  .body{margin-top:20px;padding-top:20px;border-top:1px solid var(--line);flex:1;min-height:0;display:flex;flex-direction:column;gap:18px}
+
+  ul.pts{list-style:none;display:flex;flex-direction:column;gap:11px}
+  ul.pts li{font-size:18px;line-height:1.4;padding-left:22px;position:relative;color:var(--ink)}
+  ul.pts li::before{content:"";position:absolute;left:0;top:9px;width:7px;height:7px;background:var(--navy)}
+  ul.pts li span{color:var(--mute)}
+  ul.sm li{font-size:15.5px}
+  ul.sm li::before{top:8px;width:6px;height:6px}
+
+  .cols{display:flex;gap:36px;flex:1;min-height:0}
+  .col{flex:1;display:flex;flex-direction:column;gap:10px;border-top:3px solid var(--muted);padding-top:14px;min-width:0}
+  .col.nv{border-top-color:var(--navy)}
+  .col h3{font-size:18px;font-weight:700;line-height:1.25;color:var(--ink)}
+  .col .lede{font-size:13.5px;color:var(--mute);line-height:1.45}
+
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:28px}
+  .card{display:flex;flex-direction:column;gap:8px;border-top:3px solid var(--navy);padding-top:13px}
+  .card.lt{border-top-color:var(--accent)}
+  .card .tag{font-size:11.5px;color:var(--navy);font-weight:700;letter-spacing:.6px;text-transform:uppercase}
+  .card h4{font-size:17px;font-weight:700;line-height:1.3;color:var(--ink)}
+  .card p{font-size:14px;line-height:1.45;color:var(--ink2)}
+  .card .nums{font-size:13px;color:var(--mute);font-variant-numeric:tabular-nums;margin-top:auto}
+  .card .nums b{color:var(--ink)}
+
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:24px}
+  .tile{border-top:3px solid var(--muted);padding-top:11px}
+  .tile .val{font-size:30px;font-weight:500;letter-spacing:-.5px;line-height:1.05;color:var(--navy)}
+  .tile .val small{font-size:15px;color:var(--mute);letter-spacing:0}
+  .tile .lbl{font-size:12.5px;color:var(--mute);margin-top:6px;line-height:1.35}
+
+  .callout{border-left:3px solid var(--accent);background:var(--tint);padding:10px 16px;font-size:14.5px;line-height:1.5;color:var(--ink2)}
+  .callout b{color:var(--ink)}
+
+  .flow{display:flex;align-items:stretch}
+  .step{flex:1;display:flex;flex-direction:column;gap:6px;border-top:3px solid var(--muted);padding-top:11px;min-width:0}
+  .step.nv{border-top-color:var(--navy)}
+  .step .n{font-size:11px;color:var(--navy);font-weight:700;letter-spacing:.6px;text-transform:uppercase}
+  .step h5{font-size:15.5px;font-weight:700;color:var(--ink)}
+  .step p{font-size:13px;line-height:1.45;color:var(--ink2)}
+  .arrow{display:flex;align-items:center;justify-content:center;width:28px;color:var(--line2);font-size:18px;flex:none}
+
+  table.data{width:100%;border-collapse:collapse;font-size:14px}
+  table.data th{text-align:left;font-size:11.5px;color:var(--mute);font-weight:700;letter-spacing:.3px;text-transform:uppercase;padding:0 14px 8px 0;border-bottom:2px solid var(--navy)}
+  table.data td{padding:8px 14px 8px 0;border-bottom:1px solid var(--line);vertical-align:top;line-height:1.38;color:var(--ink2)}
+  table.data td b{color:var(--ink)}
+  table.data td.num, table.data th.num{text-align:right;font-variant-numeric:tabular-nums}
+  table.data td.num{color:var(--ink)}
+  table.data td.w{font-weight:700;color:var(--navy)}
+  table.data tr.hi td{background:var(--tint)}
+  table.data .m{color:var(--mute);font-size:12.5px}
+  table.lg{font-size:16px}
+  table.lg td{padding-top:12px;padding-bottom:12px}
+  table.lg th{font-size:12.5px}
+  .callout.lg{font-size:16px;padding:14px 18px}
+  table.tight td{padding-top:6px;padding-bottom:6px}
+
+  .foot{margin-top:auto;padding-top:10px;font-size:11.5px;color:var(--faint);border-top:1px solid var(--line);padding-right:40px}
+
+  .ans{flex:1;display:flex;flex-direction:column;gap:8px;min-width:0}
+  .ans .meta{display:flex;gap:18px;font-size:12.5px;color:var(--mute);font-variant-numeric:tabular-nums;flex-wrap:wrap}
+  .ans .meta b{color:var(--ink)}
+  .ans blockquote{font-size:14px;line-height:1.5;color:var(--ink2);background:var(--tint);padding:12px 16px;border-left:3px solid var(--muted)}
+  .ans.nv blockquote{border-left-color:var(--navy)}
+
+  /* title slide */
+  .title-wrap{flex:1;display:flex;flex-direction:column;justify-content:center}
+  .title-wrap h1{font-size:52px;line-height:1.1;font-weight:500;letter-spacing:-1px;max-width:1080px;color:var(--ink)}
+  .title-wrap h1 em{font-style:normal;color:var(--navy);font-weight:700}
+  .title-wrap .tag{font-size:19px;color:var(--mute);margin-top:20px;max-width:900px;line-height:1.5}
+  .byline{margin-top:30px;font-size:15px;color:var(--ink)}
+  .byline span{color:var(--mute)}
+  .strip{display:flex;margin-top:34px;padding-top:22px;border-top:2px solid var(--navy)}
+  .strip div{flex:1;padding-left:26px;border-left:1px solid var(--line)}
+  .strip div:first-child{padding-left:0;border-left:0}
+  .strip .v{font-size:28px;font-weight:500;color:var(--navy);letter-spacing:-.4px}
+  .strip .k{font-size:12px;color:var(--mute);margin-top:6px;line-height:1.35}
+
+  /* chart */
+  .chart{display:flex;flex-direction:column;gap:6px}
+  .legend{display:flex;gap:22px;font-size:12.5px;color:var(--ink2);align-items:center;flex-wrap:wrap}
+  .legend i{display:inline-block;vertical-align:middle;margin-right:7px}
+  .legend .k-line{width:20px;height:2px;background:#3a6ea5}
+  .legend .k-dot{width:10px;height:10px;border-radius:50%;background:#c8741f}
+  .legend .k-tri{width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:11px solid #2a9d8f}
+  .legend .k-band{width:14px;height:12px;background:var(--band);border-left:1px solid var(--lessonrule)}
+  .chart svg{display:block;width:100%;height:auto}
+  .chart svg circle:hover{r:7}
+  .chart svg rect.band:hover{fill:#e2eaf3}
+  .chart .cap{font-size:12.5px;color:var(--mute)}
+
+  /* chrome */
+  #bar{position:fixed;left:0;bottom:0;height:3px;background:var(--navy);width:0;transition:width .18s ease;z-index:5}
+  #count{position:fixed;right:20px;bottom:12px;font-size:12px;color:var(--faint);z-index:5;font-variant-numeric:tabular-nums}
+  #hint{position:fixed;left:20px;bottom:12px;font-size:11px;color:#a9b2bd;z-index:5}
+  #notes{position:fixed;left:0;right:0;bottom:0;max-height:42vh;overflow:auto;background:#fbfbfa;border-top:1px solid var(--line2);padding:18px 26px 24px;font-size:14px;line-height:1.6;color:var(--ink2);display:none;z-index:6}
+  #notes.on{display:block}
+  #notes h6{font-size:12px;color:var(--navy);margin-bottom:8px;font-weight:700}
+  .notes{display:none}
+
+  @page{size:1280px 720px;margin:0}
+  @media print{
+    html,body{height:auto;overflow:visible;background:#fff}
+    #stage{position:static;display:block}
+    #canvas{transform:none !important;width:1280px;height:auto;background:none}
+    .slide{display:flex !important;position:relative;inset:auto;width:1280px;height:720px;overflow:hidden;break-after:page;page-break-after:always}
+    .slide:last-child{break-after:auto;page-break-after:auto}
+    #bar,#count,#hint,#notes{display:none !important}
+    *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  }
+</style>
+</head>
+<body>
+<div id="stage"><div id="canvas">
+
+<!-- 1 TITLE -->
+<section class="slide on">
+  <div class="title-wrap">
+    <div class="kicker">Assignment 2, Part 1 · Hamza's FDE Bootcamp, Cohort 2</div>
+    <h1>The Agentic Router, extended:<br/><em>sub-query division</em> and an <em>RBAC-aware cache</em></h1>
+    <div class="tag">A compound question now splits, routes each piece on its own, and comes back as one answer with separate citations. A semantic cache makes repeats faster and never crosses a role boundary.</div>
+    <div class="byline"><b>Kurt Lozier</b> <span>· September 25, 2026 · Agentic_Router.ipynb, run end to end</span></div>
+    <div class="strip">
+      <div><div class="v">3 of 3</div><div class="k">check-yourself cases pass<br/>(Part 1, required)</div></div>
+      <div><div class="v">5 of 5</div><div class="k">checks pass<br/>(Part 1 cases, parser, Bonus self-check)</div></div>
+      <div><div class="v">2944 → 1227 ms</div><div class="k">bob's repeat question,<br/>cache MISS then HIT</div></div>
+      <div><div class="v">0 tokens</div><div class="k">offline harness proves the logic<br/>with a fake LLM and fake search</div></div>
+    </div>
+  </div>
+  <div class="notes">Two changes to the course notebook: the required sub-query division and the optional RBAC-aware semantic cache. All numbers come from the executed notebook's own output.</div>
+</section>
+
+<!-- 2 OVERVIEW -->
+<section class="slide">
+  <div class="kicker">Overview</div>
+  <h1 class="head">Both stubs are implemented, the notebook runs green, and <span class="hl">the leak test passes</span>.</h1>
+  <div class="body">
+    <div class="grid3">
+      <div class="card">
+        <div class="tag">Required · graded</div>
+        <h4>Sub-query division</h4>
+        <p>Split a compound question, route each sub-query separately, compose one answer that keeps every citation.</p>
+        <div class="nums">function <b>agentic_rag_multi()</b></div>
+      </div>
+      <div class="card lt">
+        <div class="tag">Bonus · optional</div>
+        <h4>RBAC-aware semantic cache</h4>
+        <p>Make repeat questions fast without ever serving one role's answer to another.</p>
+        <div class="nums">function <b>secure_agentic_rag_cached()</b></div>
+      </div>
+      <div class="card">
+        <div class="tag">Result</div>
+        <h4>Run end to end, all checks green</h4>
+        <p>Real OpenAI, Qdrant and SerpApi calls. Logic proved first offline at zero token cost.</p>
+        <div class="nums">cells above the stubs: <b>not modified</b></div>
+      </div>
+    </div>
+    <table class="data">
+      <tr><th>check</th><th>source in the notebook</th><th>result</th></tr>
+      <tr><td>1 question, 1 route, no compose call</td><td>Part 1 check-yourself table</td><td class="w">pass</td></tr>
+      <tr><td>2 sub-queries, both 10K_DOCUMENT_QUERY</td><td>Part 1 check-yourself table</td><td class="w">pass</td></tr>
+      <tr><td>2 sub-queries, different routes</td><td>Part 1 check-yourself table</td><td class="w">pass</td></tr>
+      <tr><td>Malformed, fenced, prose-wrapped or empty split degrades to one query</td><td>Parser robustness cell</td><td class="w">pass</td></tr>
+      <tr class="hi"><td>Bonus self-check: MISS, HIT, leak test, paraphrase leak, unknown user, shared source</td><td>run_self_check()</td><td class="w">pass</td></tr>
+    </table>
+  </div>
+  <div class="notes">Scan-first summary. The graded piece is sub-query division. The bonus is ungraded but rehearses the caching layer ARGUS requires.</div>
+</section>
+
+<!-- 3 THE NOTEBOOK AS GIVEN -->
+<section class="slide">
+  <div class="kicker">1 · The notebook as given</div>
+  <h1 class="head">One question, one route: an LLM router picks <span class="hl">one of three sources</span> and answers from it.</h1>
+  <div class="body">
+    <div class="flow">
+      <div class="step nv"><div class="n">Router</div><h5>route_query()</h5><p>LLM returns JSON: action, reason, answer.</p></div>
+      <div class="arrow">→</div>
+      <div class="step"><div class="n">OPENAI_QUERY</div><h5>OpenAI docs index</h5><p>Qdrant collection of OpenAI Agents documentation.</p></div>
+      <div class="arrow">→</div>
+      <div class="step"><div class="n">10K_DOCUMENT_QUERY</div><h5>10-K index</h5><p>Qdrant collection of Lyft 2024 and Uber 2021 filings.</p></div>
+      <div class="arrow">→</div>
+      <div class="step"><div class="n">INTERNET_QUERY</div><h5>Live web search</h5><p>SerpApi, for anything current or general.</p></div>
+    </div>
+    <div class="cols">
+      <div class="col nv">
+        <h3>Stub 1 · Part 1, required</h3>
+        <ul class="pts sm">
+          <li>Write <b>agentic_rag_multi(user_query)</b>.</li>
+          <li>Split with <b>sub_queries()</b>; route each piece separately.</li>
+          <li>Compose one answer; keep each sub-answer's citations.</li>
+          <li>Single question: no regression, no extra LLM calls beyond the split.</li>
+          <li>Parse the split's JSON defensively; fall back to one query.</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h3>Stub 2 · Bonus, optional</h3>
+        <ul class="pts sm">
+          <li>Add a role-aware cache to <b>secure_agentic_rag()</b>.</li>
+          <li>Pick partitioned or tagged; justify it.</li>
+          <li>Fixed order: identity, route, permission, cache.</li>
+          <li>Never cache a denial or a time-sensitive query.</li>
+          <li>Pass the leak test.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="foot">Source: Agentic_Router.ipynb, Sections 2–6 and the Assignment cells; embeddings are nomic-embed-text-v1.5</div>
+  <div class="notes">Section 6 already gates access by role: alice is an engineer (OpenAI docs and web), bob is a finance analyst (OpenAI docs and 10-K). The bonus adds a cache on top without opening a leak.</div>
+</section>
+
+<!-- 4 SUB-QUERY DESIGN -->
+<section class="slide">
+  <div class="kicker">2 · Sub-query division · design</div>
+  <h1 class="head">Each sub-query runs the <span class="hl">same router and routes</span>; citations are renumbered so they never collide.</h1>
+  <div class="body">
+    <div class="flow">
+      <div class="step"><div class="n">1 · Split</div><h5>sub_queries()</h5><p>Defensive parser strips fences and prose. Any failure falls back to the original query. Cap of 5.</p></div>
+      <div class="arrow">→</div>
+      <div class="step"><div class="n">2 · Route each</div><h5>route_query()</h5><p>Same router, same route table. Sub-queries may land on different sources.</p></div>
+      <div class="arrow">→</div>
+      <div class="step"><div class="n">3 · Answer each</div><h5>Retrieve, then answer</h5><p>Concurrent via asyncio.gather. Citations [n] become [i.n] for sub-query i.</p></div>
+      <div class="arrow">→</div>
+      <div class="step nv"><div class="n">4 · Compose</div><h5>One LLM call</h5><p>Keep every [i.n] verbatim. A Sources footer maps each marker to its snippet.</p></div>
+    </div>
+    <div class="cols">
+      <div class="ans nv">
+        <h3 style="font-size:17px">Composed answer, case 2 (from the run)</h3>
+        <blockquote>"In 2021:<br/>- Lyft revenue: $3.208 billion (approximately $3,208,323,000).[1.2]<br/>- Uber revenue: $17.455 billion (approximately $17.5 billion).[2.1][2.2]"</blockquote>
+        <div class="meta"><span>Sources footer lists <b>[1.1]–[1.3]</b> and <b>[2.1]–[2.3]</b>, each with the 10-K snippet behind it</span></div>
+      </div>
+      <div class="col">
+        <h3>The single-question case</h3>
+        <ul class="pts sm">
+          <li>One sub-query skips the compose call.</li>
+          <li>LLM calls: split, route, answer.</li>
+          <li>That is one more than <b>agentic_rag()</b>, the split the brief allows.</li>
+          <li>Markers revert from [1.n] to [n].</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="foot">Source: Part 1 implementation cell, design notes; check-yourself output, case 2</div>
+  <div class="notes">Renumbering before compose is the key choice. Two sub-answers both cite [1]; without a prefix, the composer cannot keep them apart and the trail breaks.</div>
+</section>
+
+<!-- 5 SUB-QUERY RESULTS -->
+<section class="slide">
+  <div class="kicker">2 · Sub-query division · results</div>
+  <h1 class="head">All three check-yourself cases pass, and the mixed case <span class="hl">hits the 10-K index and live search</span>.</h1>
+  <div class="body">
+    <table class="data lg">
+      <tr><th style="width:380px">query</th><th class="num">sub-queries</th><th>routes chosen</th><th class="num">time</th><th>expected</th></tr>
+      <tr><td>what was uber revenue in 2021?</td><td class="num">1</td><td>10K_DOCUMENT_QUERY</td><td class="num">3 s</td><td class="w">1 route, as agentic_rag()</td></tr>
+      <tr><td>what was lyft revenue in 2021 and what was uber revenue in 2021</td><td class="num">2</td><td>10K_DOCUMENT_QUERY, 10K_DOCUMENT_QUERY</td><td class="num">5 s</td><td class="w">both 10-K</td></tr>
+      <tr class="hi"><td>what was uber's 2021 revenue and what are the newest LLMs?</td><td class="num">2</td><td>10K_DOCUMENT_QUERY, INTERNET_QUERY</td><td class="num">7 s</td><td class="w">different routes</td></tr>
+    </table>
+    <div class="cols" style="flex:0 0 auto">
+      <div class="col nv">
+        <h3>Stretch: sequential vs concurrent</h3>
+        <ul class="pts sm">
+          <li>Same mixed query, run both ways.</li>
+          <li>Sequential 9.7 s, concurrent 7.1 s: <b>1.37× faster</b>.</li>
+          <li>Blocking calls run in worker threads; Qdrant is already async.</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h3>Parser robustness, no API calls</h3>
+        <ul class="pts sm">
+          <li>Fenced, prose-wrapped, malformed and empty splits tested.</li>
+          <li>Every bad split degrades to one query instead of crashing.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="foot">Source: notebook output, check-yourself cells (times rounded to whole seconds; the notebook prints 2.8, 5.3 and 6.7 s) and the stretch cell</div>
+  <div class="notes">One run each, so the times are single samples, not averages. The speed-up comes from overlapping the router, retrieval and answer calls of each sub-query.</div>
+</section>
+
+<!-- 6 RBAC CACHE DESIGN -->
+<section class="slide">
+  <div class="kicker">3 · RBAC semantic cache · design</div>
+  <h1 class="head">Permission is checked <span class="hl">before the cache is read</span>, so a denied user never reaches a cached answer.</h1>
+  <div class="body">
+    <div class="flow">
+      <div class="step"><div class="n">1 · Identity</div><h5>Unknown user?</h5><p>DENIED. No embedding, no cache, no LLM.</p></div>
+      <div class="arrow">→</div>
+      <div class="step"><div class="n">2 · Route</div><h5>route_query()</h5><p>Which source does this question need?</p></div>
+      <div class="arrow">→</div>
+      <div class="step"><div class="n">3 · Permission</div><h5>has_access()</h5><p>DENIED before any cache lookup. A denial is never cached.</p></div>
+      <div class="arrow">→</div>
+      <div class="step nv"><div class="n">4 · Cache</div><h5>Same route, permitted rows</h5><p>HIT returns the stored answer. MISS runs the pipeline, then stores.</p></div>
+    </div>
+    <div class="cols">
+      <div class="col nv">
+        <h3>Design choice: tagged by source, not by role</h3>
+        <ul class="pts sm">
+          <li>Each entry stores the route that produced it.</li>
+          <li>A lookup sees only rows from routes the caller may read.</li>
+          <li>alice and bob share OPENAI_QUERY rows; per-role caches would compute them twice.</li>
+          <li>Role change: nothing to flush. Permissions are re-checked on every request.</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h3>What is never cached</h3>
+        <ul class="pts sm">
+          <li>Denials.</li>
+          <li>INTERNET_QUERY answers: live search is time-sensitive by nature.</li>
+          <li>Time-sensitive wording: "latest", "now", "stock price" and similar.</li>
+          <li>Anything the caller could not read (checked again on store).</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="foot">Source: Bonus implementation cell, RoleAwareSemanticCache docstring · similarity: cosine over nomic embeddings, hit at cosine distance ≤ 0.2</div>
+  <div class="notes">The brief offered two designs: partitioned per role or tagged. Tagging by source keeps one cache, shares the rows two roles may both read, and leaves protection to the permission check that runs first.</div>
+</section>
+
+<!-- 7 LEAK TEST -->
+<section class="slide">
+  <div class="kicker">3 · RBAC semantic cache · leak test</div>
+  <h1 class="head">bob's repeat drops from 2944 ms to 1227 ms; <span class="hl">alice is denied on the exact question and a paraphrase</span>.</h1>
+  <div class="body">
+    <table class="data">
+      <tr><th>#</th><th>user</th><th>role</th><th>query</th><th>route</th><th>status</th><th class="num">sim</th><th class="num">ms</th></tr>
+      <tr><td>1</td><td><b>bob</b></td><td>finance_analyst</td><td>what was uber revenue in 2021?</td><td>10K_DOCUMENT_QUERY</td><td>MISS</td><td class="num">–</td><td class="num">2944</td></tr>
+      <tr class="hi"><td>2</td><td><b>bob</b></td><td>finance_analyst</td><td>what was uber revenue in 2021?</td><td>10K_DOCUMENT_QUERY</td><td class="w">HIT</td><td class="num">1.0</td><td class="num">1227</td></tr>
+      <tr class="hi"><td>3</td><td><b>alice</b></td><td>engineer</td><td>what was uber revenue in 2021?</td><td>10K_DOCUMENT_QUERY</td><td class="w">DENIED</td><td class="num">–</td><td class="num">1378</td></tr>
+      <tr class="hi"><td>4</td><td><b>alice</b></td><td>engineer</td><td>how much revenue did Uber make in 2021?</td><td>10K_DOCUMENT_QUERY</td><td class="w">DENIED</td><td class="num">–</td><td class="num">1041</td></tr>
+      <tr><td>5</td><td><b>carol</b></td><td>unknown</td><td>how do I build an agent with the OpenAI Agents SDK?</td><td>–</td><td class="w">DENIED</td><td class="num">–</td><td class="num">0</td></tr>
+      <tr><td>6</td><td><b>alice</b></td><td>engineer</td><td>how do I build an agent with the OpenAI Agents SDK?</td><td>OPENAI_QUERY</td><td>MISS</td><td class="num">–</td><td class="num">9352</td></tr>
+      <tr><td>7</td><td><b>alice</b></td><td>engineer</td><td>how do I build an agent with the OpenAI Agents SDK?</td><td>OPENAI_QUERY</td><td class="w">HIT</td><td class="num">1.0</td><td class="num">910</td></tr>
+    </table>
+    <div class="callout lg"><b>Rows 3 and 4 are the leak test.</b> bob's answer sits in the cache, yet alice never reaches it: the permission check fires first. carol is rejected in 0 ms, before any embedding or LLM call. Result: "All checks passed — cache is fast and does not leak across roles."</div>
+  </div>
+  <div class="foot">Source: notebook output, leak-test cell and audit table (single run; each HIT still pays one router call)</div>
+  <div class="notes">A HIT is not free: the router runs before the cache, so a HIT costs one LLM call plus an embedding. That is why bob's HIT is about 1.2 s, not near zero. Both HITs here were exact repeats (similarity 1.0).</div>
+</section>
+
+<!-- 8 OFFLINE HARNESS -->
+<section class="slide">
+  <div class="kicker">4 · Offline harness</div>
+  <h1 class="head">A fake LLM and fake search <span class="hl">proved the logic at zero token cost</span> before the live run.</h1>
+  <div class="body">
+    <div class="cols" style="flex:0 0 auto">
+      <div class="col nv">
+        <h3>What is real</h3>
+        <ul class="pts sm">
+          <li>The notebook's own cells, executed from the .ipynb.</li>
+          <li>nomic embeddings and the local Qdrant index.</li>
+          <li>Router parsing, route table and RBAC rules.</li>
+          <li>The Part 1 and Bonus cells, self-check included.</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h3>What is faked</h3>
+        <ul class="pts sm">
+          <li>OpenAI client: splits on "and", routes by keyword, echoes citation markers.</li>
+          <li>SerpApi: returns a fixed web result.</li>
+          <li>Hugging Face runs in offline mode. No network, no keys.</li>
+        </ul>
+      </div>
+    </div>
+    <table class="data">
+      <tr><th>what the harness asserts</th><th>why it matters</th></tr>
+      <tr><td>Single case keeps [n] citations, no [1.1]</td><td>No regression for one question</td></tr>
+      <tr><td>Same-route case composes with [1.1] and [2.1]</td><td>Renumbering survives the compose step</td></tr>
+      <tr><td>Mixed case uses INTERNET_QUERY and 10K_DOCUMENT_QUERY</td><td>Each sub-query is routed separately</td></tr>
+      <tr class="hi"><td>Bonus self-check: MISS, HIT, DENIED pattern, leak test included</td><td>The cache cannot leak, even before real calls</td></tr>
+    </table>
+  </div>
+  <div class="foot">Source: offline_harness.py; README.md "Offline verification". Its MISS / HIT / DENIED pattern matched the live run, with timings in tens of ms.</div>
+  <div class="notes">Run it with .venv/bin/python offline_harness.py. It also probes a paraphrase within one role, a different question on the same route, and the never-cache rule for live search.</div>
+</section>
+
+<!-- 9 LIMITATIONS -->
+<section class="slide">
+  <div class="kicker">5 · Limitations and production changes</div>
+  <h1 class="head">This works for a notebook; <span class="hl">production needs a shared, tuned, expiring cache</span>.</h1>
+  <div class="body">
+    <table class="data">
+      <tr><th style="width:560px">limitation</th><th>production change</th></tr>
+      <tr><td><b>In-memory cache</b> (Python lists): lost on restart, one process only</td><td>Shared store, e.g. Redis or a vector DB, across workers</td></tr>
+      <tr><td><b>Threshold not tuned:</b> cosine distance 0.2; live HITs were exact repeats</td><td>Sweep on a paraphrase set; measure false hits and misses</td></tr>
+      <tr><td><b>No TTL or eviction;</b> freshness rests on a keyword regex</td><td>TTL per source; invalidate 10-K rows when the index is rebuilt</td></tr>
+      <tr><td><b>Router runs before the permission check:</b> a denial still costs about 1 s</td><td>Pass the role's allowed sources into the router prompt</td></tr>
+      <tr><td><b>Gates whole sources, not chunks</b></td><td>Qdrant payload filters, so restricted chunks never enter context</td></tr>
+      <tr><td><b>Brute-force numpy search</b></td><td>faiss.IndexFlatIP beyond about 10k rows</td></tr>
+      <tr><td><b>Audit log in memory</b></td><td>Append-only store; that trail is what an auditor needs</td></tr>
+    </table>
+    <div class="callout"><b>Single runs.</b> Each timing is one sample. The 1.37× concurrent speed-up and the 2944 → 1227 ms cache gain are indicative, not averages.</div>
+  </div>
+  <div class="foot">Source: Bonus cell design notes; notebook Section 6 "Where this is still weak"; leak-test timings. README.md lists no limitations.</div>
+  <div class="notes">The first two rows matter most. A shared cache is what ARGUS will need, and a similarity threshold chosen without a sweep is a guess, whether it errs toward false hits or toward misses.</div>
+</section>
+
+<!-- 10 CLOSING -->
+<section class="slide">
+  <div class="title-wrap">
+    <div class="kicker">Recap</div>
+    <h1>Split, route, compose.<br/><em>Check permission before the cache.</em></h1>
+    <div class="tag">Sub-query division answers compound questions with a citation trail per source. The RBAC-aware cache speeds up repeats and never serves an answer across a role boundary.</div>
+    <div class="strip">
+      <div><div class="v">3 of 3</div><div class="k">check-yourself cases pass,<br/>including mixed routes</div></div>
+      <div><div class="v">1.37×</div><div class="k">concurrent vs sequential<br/>sub-queries, one run</div></div>
+      <div><div class="v">2 of 2</div><div class="k">leak attempts denied:<br/>exact and paraphrase</div></div>
+      <div><div class="v">0 tokens</div><div class="k">offline harness run<br/>before the live one</div></div>
+    </div>
+    <div class="byline"><b>Kurt Lozier</b> <span>· Hamza's FDE Bootcamp, Cohort 2 · Thank you</span></div>
+  </div>
+  <div class="notes">Close on the order of operations: identity, route, permission, cache. Everything else in the bonus follows from putting the permission check first.</div>
+</section>
+
+</div></div>
+
+<div id="bar"></div>
+<div id="count"></div>
+<div id="hint">← → navigate · N notes · F fullscreen</div>
+<div id="notes"><h6>Speaker notes</h6><div id="notesBody"></div></div>
+
+<script>
+(function(){
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var i = 0;
+  var bar = document.getElementById('bar'), count = document.getElementById('count');
+  var notes = document.getElementById('notes'), notesBody = document.getElementById('notesBody');
+  var canvas = document.getElementById('canvas');
+  function fit(){ var s = Math.min(window.innerWidth / 1280, window.innerHeight / 720); canvas.style.transform = 'scale(' + s + ')'; }
+  window.addEventListener('resize', fit); fit();
+  function show(n){
+    i = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach(function(s, k){ s.classList.toggle('on', k === i); });
+    count.textContent = (i + 1) + ' / ' + slides.length;
+    bar.style.width = ((i + 1) / slides.length * 100) + '%';
+    var nd = slides[i].querySelector('.notes');
+    notesBody.textContent = nd ? nd.textContent : '(no notes)';
+  }
+  document.addEventListener('keydown', function(e){
+    var k = e.key;
+    if (k === 'ArrowRight' || k === 'ArrowDown' || k === ' ' || k === 'PageDown'){ e.preventDefault(); show(i + 1); }
+    else if (k === 'ArrowLeft' || k === 'ArrowUp' || k === 'PageUp'){ e.preventDefault(); show(i - 1); }
+    else if (k === 'Home'){ show(0); }
+    else if (k === 'End'){ show(slides.length - 1); }
+    else if (k === 'n' || k === 'N'){ notes.classList.toggle('on'); }
+    else if (k === 'f' || k === 'F'){ if (!document.fullscreenElement){ document.documentElement.requestFullscreen(); } else { document.exitFullscreen(); } }
+  });
+  document.addEventListener('click', function(e){
+    if (notes.contains(e.target) || e.target.closest('svg')) return;
+    if (e.clientX < window.innerWidth * 0.22) show(i - 1); else show(i + 1);
+  });
+  var x0 = null;
+  document.addEventListener('touchstart', function(e){ x0 = e.changedTouches[0].clientX; });
+  document.addEventListener('touchend', function(e){
+    if (x0 === null) return;
+    var dx = e.changedTouches[0].clientX - x0;
+    if (Math.abs(dx) > 45){ dx < 0 ? show(i + 1) : show(i - 1); }
+    x0 = null;
+  });
+  show(0);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+youtube-transcript-api
+sentence-transformers
+chromadb
+anthropic
+python-dotenv
+numpy

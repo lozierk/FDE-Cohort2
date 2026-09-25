@@ -1,0 +1,98 @@
+[
+  {
+    "id": "q01",
+    "type": "lookup",
+    "question": "What exactly did the SEAL instructors check when they inspected the trainees' beds every morning?",
+    "expected_lessons": [1],
+    "key_phrases": ["corners", "pillow centered", "extra blanket"],
+    "reference_answer": "In lesson 1, the instructors inspected whether the corners were square, the covers pulled tight, the pillow centered just under the headboard, and the extra blanket folded neatly at the foot of the rack."
+  },
+  {
+    "id": "q02",
+    "type": "lookup",
+    "question": "What did the bigger boat crews tease the munchkin crew about?",
+    "expected_lessons": [3],
+    "key_phrases": ["flippers", "munchkin crew", "five-foot-five"],
+    "reference_answer": "In lesson 3, the other boat crews made fun of the tiny little flippers the munchkin crew wore before every swim, even though no one in that crew was over five-foot-five and they out-paddled, out-ran, and out-swam everyone else."
+  },
+  {
+    "id": "q03",
+    "type": "lookup",
+    "question": "How long was the rope on the slide for life obstacle?",
+    "expected_lessons": [6],
+    "key_phrases": ["200-foot", "slide for life", "three-level"],
+    "reference_answer": "In lesson 6, the slide for life had a 200-foot-long rope strung between a three-level, 30-foot tower at one end and a one-level tower at the other."
+  },
+  {
+    "id": "q04",
+    "type": "lookup",
+    "question": "How many trainees would the instructors have needed to quit before they'd let the whole class out of the mud?",
+    "expected_lessons": [9],
+    "key_phrases": ["five men", "mud flats", "quit"],
+    "reference_answer": "In lesson 9, at the mud flats during Hell Week the instructors said the class could leave the mud if only five men would quit."
+  },
+  {
+    "id": "q05",
+    "type": "span",
+    "question": "What happened when McRaven's boat crew paddled through the surf, and what lesson does he draw from it?",
+    "expected_lessons": [2],
+    "key_phrases": ["boat crew", "coxswain", "help you paddle"],
+    "reference_answer": "In lesson 2, each boat crew of seven students had to paddle a rubber boat through the surf zone in sync with the coxswain's stroke count; if even one person failed to exert equal effort, the boat would turn against the wave and get dumped back on the beach. McRaven draws the lesson that you can't change the world alone, so if you want to change the world, find someone to help you paddle."
+  },
+  {
+    "id": "q06",
+    "type": "span",
+    "question": "What happened to a student who failed the uniform inspection, and what does McRaven say that teaches?",
+    "expected_lessons": [4],
+    "key_phrases": ["sugar cookie", "surf zone", "keep moving forward"],
+    "reference_answer": "In lesson 4, a student who failed the uniform inspection had to run fully clothed into the surf zone and then roll in the sand until covered head to toe, a punishment called the sugar cookie, and then stay in that cold, wet, sandy uniform the rest of the day. McRaven's lesson is that sometimes no matter how well you prepare or perform, you still end up a sugar cookie, and if you want to change the world, you have to get over being a sugar cookie and keep moving forward."
+  },
+  {
+    "id": "q07",
+    "type": "span",
+    "question": "What were trainees told to do if a shark started circling them during the night swim, and what's the takeaway?",
+    "expected_lessons": [7],
+    "key_phrases": ["night swim", "punch him in the snout", "don't back down"],
+    "reference_answer": "In lesson 7, during the night swim off San Clemente Island, instructors told students that if a shark circled them they should stand their ground, not swim away, not act afraid, and if it darted toward them, punch it in the snout so it would turn and swim away. McRaven's lesson is that there are a lot of sharks in the world, so if you want to change the world, don't back down from the sharks."
+  },
+  {
+    "id": "q08",
+    "type": "span",
+    "question": "What is the ship attack mission, and what lesson does McRaven take from finding the keel in total darkness?",
+    "expected_lessons": [8],
+    "key_phrases": ["keel", "darkest moment", "depth gauge"],
+    "reference_answer": "In lesson 8, on a ship attack mission a pair of SEAL divers swims over two miles underwater using only a depth gauge and a compass to find the keel, the centerline and deepest, darkest part of an enemy ship, where you can't see your hand in front of your face. McRaven's lesson is that at the darkest moment of a mission you must be calm and composed, so if you want to change the world, you must be your very best in the darkest moments."
+  },
+  {
+    "id": "q09",
+    "type": "multi",
+    "question": "Which lessons show the instructors deliberately punishing or pressuring the trainees as a group, and what was the point of it each time?",
+    "expected_lessons": [4, 5, 9],
+    "key_phrases": ["sugar cookie", "circus", "mud flats"],
+    "reference_answer": "Three lessons show group punishment or pressure. In lesson 4, failing a uniform inspection turned a student into a sugar cookie, running into the surf and rolling in sand, to teach that effort doesn't guarantee success, so you get over it and keep moving. In lesson 5, missing a physical standard put a trainee's name on the list for a circus, two extra hours of calisthenics that built strength and taught trainees not to fear the circuses. In lesson 9, during Hell Week the instructors held the class in the freezing mud flats and offered to let everyone out if only five men quit, testing resolve and teaching the power of hope through singing."
+  },
+  {
+    "id": "q10",
+    "type": "multi",
+    "question": "What do the night swim and the underwater ship attack have in common, and how do their lessons differ?",
+    "expected_lessons": [7, 8],
+    "key_phrases": ["night swim", "keel", "sharks"],
+    "reference_answer": "Both lesson 7 and lesson 8 are underwater SEAL challenges built around fear and disorientation. In lesson 7, the night swim off San Clemente exposes trainees to sharks, and the lesson is not to back down from the sharks. In lesson 8, the ship attack mission requires finding the ship's keel in total darkness, and the lesson is to be your very best in the darkest moments. One is about facing an external threat head-on, the other about staying composed when you can't see anything at all."
+  },
+  {
+    "id": "q11",
+    "type": "multi",
+    "question": "Which lessons hinge on a specific number, headcount, or record, and what were they?",
+    "expected_lessons": [3, 6, 9],
+    "key_phrases": ["five-foot-five", "record", "five men"],
+    "reference_answer": "In lesson 3, the munchkin boat crew had no one over five-foot-five yet out-paddled every bigger crew. In lesson 6, the slide for life obstacle course record had stood for years until a student broke it by going down headfirst in half the usual time. In lesson 9, at the mud flats during Hell Week, the instructors said the class could leave if only five men quit."
+  },
+  {
+    "id": "q12",
+    "type": "multi",
+    "question": "How do the first and last lessons of the speech connect, from making your bed to never ringing the bell?",
+    "expected_lessons": [1, 10],
+    "key_phrases": ["make your bed", "ring the bell", "small sense of pride"],
+    "reference_answer": "Lesson 1 and lesson 10 bookend the speech's theme of daily discipline versus giving up. Lesson 1 says that if you make your bed every morning you complete the first task of the day, which gives you a small sense of pride that carries you forward even on a miserable day. Lesson 10 says that ringing the brass bell in the compound is how a trainee quits, and the lesson is to never, ever ring the bell. Together they frame changing the world as starting small each day and never giving up no matter how hard it gets."
+  }
+]
